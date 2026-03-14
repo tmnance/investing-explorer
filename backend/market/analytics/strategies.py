@@ -100,27 +100,41 @@ def _build_strategy_result(
     }
 
 
-@register_strategy('sp500_benchmark', 'S&P 500 Benchmark', 'Buy and hold the S&P 500 index')
-def sp500_benchmark(start_year: int = 2016, end_year: int = 2025) -> dict:
+def _benchmark_strategy(symbol: str, name: str, start_year: int, end_year: int) -> dict:
     start_date = date(start_year, 1, 1)
     end_date = date(end_year, 12, 31)
 
     records = list(
         BenchmarkIndex.objects.filter(
-            index_symbol='^GSPC',
+            index_symbol=symbol,
             date__gte=start_date,
             date__lte=end_date,
         ).order_by('date').values('date', 'close')
     )
 
     if not records:
-        return _build_strategy_result('S&P 500 Benchmark', pd.Series(dtype=float), start_year, end_year)
+        return _build_strategy_result(f'{name} Benchmark', pd.Series(dtype=float), start_year, end_year)
 
     values = pd.Series(
         [r['close'] for r in records],
         index=[r['date'] for r in records],
     )
-    return _build_strategy_result('S&P 500 Benchmark', values, start_year, end_year)
+    return _build_strategy_result(f'{name} Benchmark', values, start_year, end_year)
+
+
+@register_strategy('sp500_benchmark', 'S&P 500 Benchmark', 'Buy and hold the S&P 500 index')
+def sp500_benchmark(start_year: int = 2016, end_year: int = 2025) -> dict:
+    return _benchmark_strategy('^GSPC', 'S&P 500', start_year, end_year)
+
+
+@register_strategy('dow_benchmark', 'Dow Jones Benchmark', 'Buy and hold the Dow Jones Industrial Average')
+def dow_benchmark(start_year: int = 2016, end_year: int = 2025) -> dict:
+    return _benchmark_strategy('^DJI', 'Dow Jones', start_year, end_year)
+
+
+@register_strategy('nasdaq_benchmark', 'Nasdaq Benchmark', 'Buy and hold the Nasdaq Composite index')
+def nasdaq_benchmark(start_year: int = 2016, end_year: int = 2025) -> dict:
+    return _benchmark_strategy('^IXIC', 'Nasdaq', start_year, end_year)
 
 
 @register_strategy(

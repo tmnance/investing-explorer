@@ -211,6 +211,13 @@ def portfolio_simulator(request):
 
     start_year = int(request.query_params.get('start_year', 2016))
     end_year = int(request.query_params.get('end_year', 2025))
+    benchmarks_param = request.query_params.get('benchmarks', '^GSPC')
+    benchmarks_selected = [b.strip() for b in benchmarks_param.split(',') if b.strip()]
+    ALLOWED = {'^GSPC', '^DJI', '^IXIC'}
+    benchmarks_selected = [b for b in benchmarks_selected if b in ALLOWED]
+    if not benchmarks_selected:
+        benchmarks_selected = ['^GSPC']
+
     start_date = date_cls(start_year, 1, 1)
     end_date = date_cls(end_year, 12, 31)
 
@@ -239,35 +246,51 @@ def portfolio_simulator(request):
     portfolio_returns = sum(daily_returns[t] * weights.get(t, 0) for t in available)
     portfolio_cumulative = (1 + portfolio_returns).cumprod()
 
-    benchmark_records = list(
-        BenchmarkIndex.objects.filter(
-            index_symbol='^GSPC',
-            date__gte=start_date,
-            date__lte=end_date,
-        ).order_by('date').values('date', 'close')
-    )
+    BENCHMARK_NAMES = {'^GSPC': 'S&P 500', '^DJI': 'Dow Jones', '^IXIC': 'Nasdaq'}
 
-    benchmark_series = pd.Series(
-        [r['close'] for r in benchmark_records],
-        index=[r['date'] for r in benchmark_records],
-    )
-    benchmark_cumulative = benchmark_series / benchmark_series.iloc[0]
+    benchmark_series_list = []
+    for symbol in benchmarks_selected:
+        benchmark_records = list(
+            BenchmarkIndex.objects.filter(
+                index_symbol=symbol,
+                date__gte=start_date,
+                date__lte=end_date,
+            ).order_by('date').values('date', 'close')
+        )
 
-    common_dates = portfolio_cumulative.index.intersection(benchmark_cumulative.index)
+        if not benchmark_records:
+            continue
+
+        benchmark_series = pd.Series(
+            [r['close'] for r in benchmark_records],
+            index=[r['date'] for r in benchmark_records],
+        )
+        benchmark_cumulative = benchmark_series / benchmark_series.iloc[0]
+        benchmark_series_list.append((BENCHMARK_NAMES[symbol], benchmark_cumulative))
+
+    common_dates = portfolio_cumulative.index
+    for _, b_series in benchmark_series_list:
+        common_dates = common_dates.intersection(b_series.index)
+
     p_vals = portfolio_cumulative.loc[common_dates]
-    b_vals = benchmark_cumulative.loc[common_dates]
-
-    b_vals_renorm = b_vals / b_vals.iloc[0]
-
     p_metrics = compute_all_metrics(p_vals.values.astype(float))
-    b_metrics = compute_all_metrics(b_vals_renorm.values.astype(float))
+
+    benchmarks_data = []
+    for name, b_series in benchmark_series_list:
+        b_vals = b_series.loc[common_dates]
+        b_vals_renorm = b_vals / b_vals.iloc[0]
+        b_metrics = compute_all_metrics(b_vals_renorm.values.astype(float))
+        benchmarks_data.append({
+            'name': name,
+            'values': b_vals_renorm.tolist(),
+            'metrics': b_metrics,
+        })
 
     return Response({
         'dates': [str(d) for d in common_dates],
         'portfolio_values': p_vals.tolist(),
-        'benchmark_values': b_vals_renorm.tolist(),
+        'benchmarks': benchmarks_data,
         'metrics': p_metrics,
-        'benchmark_metrics': b_metrics,
     })
 
 

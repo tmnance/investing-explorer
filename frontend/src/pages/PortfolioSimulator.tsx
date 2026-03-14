@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState, useMemo } from 'react'
 import { api } from '@/api/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -22,10 +22,15 @@ interface Allocation {
   weight: number
 }
 
-interface SimulationResult {
-  dates: string[]
-  portfolio_values: number[]
-  benchmark_values: number[]
+const BENCHMARKS = [
+  { symbol: '^GSPC', name: 'S&P 500' },
+  { symbol: '^DJI', name: 'Dow Jones' },
+  { symbol: '^IXIC', name: 'Nasdaq' },
+] as const
+
+interface BenchmarkResult {
+  name: string
+  values: number[]
   metrics: {
     total_return: number
     cagr: number
@@ -34,7 +39,13 @@ interface SimulationResult {
     sortino_ratio: number
     max_drawdown: number
   }
-  benchmark_metrics: {
+}
+
+interface SimulationResult {
+  dates: string[]
+  portfolio_values: number[]
+  benchmarks: BenchmarkResult[]
+  metrics: {
     total_return: number
     cagr: number
     volatility: number
@@ -53,6 +64,18 @@ export default function PortfolioSimulator() {
   ])
   const [startYear, setStartYear] = useState(2016)
   const [endYear, setEndYear] = useState(2025)
+  const [selectedBenchmarks, setSelectedBenchmarks] = useState<Set<string>>(new Set(['^GSPC']))
+
+  const toggleBenchmark = (symbol: string) => {
+    setSelectedBenchmarks((prev) => {
+      const next = new Set(prev)
+      if (next.has(symbol)) {
+        next.delete(symbol)
+        if (next.size === 0) next.add('^GSPC')
+      } else next.add(symbol)
+      return next
+    })
+  }
   const [result, setResult] = useState<SimulationResult | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -103,6 +126,7 @@ export default function PortfolioSimulator() {
         ),
         start_year: String(startYear),
         end_year: String(endYear),
+        benchmarks: Array.from(selectedBenchmarks).join(','),
       })
       const res = await fetch(`/api/simulator/?${params}`)
       if (!res.ok) {
@@ -119,11 +143,16 @@ export default function PortfolioSimulator() {
 
   const chartData = useMemo(() => {
     if (!result) return []
-    return result.dates.map((date, i) => ({
-      date,
-      Portfolio: (result.portfolio_values[i] - 1) * 100,
-      'S&P 500': (result.benchmark_values[i] - 1) * 100,
-    }))
+    return result.dates.map((date, i) => {
+      const point: Record<string, number | string> = {
+        date,
+        Portfolio: (result.portfolio_values[i] - 1) * 100,
+      }
+      result.benchmarks.forEach((b) => {
+        point[b.name] = (b.values[i] - 1) * 100
+      })
+      return point
+    })
   }, [result])
 
   return (
@@ -131,7 +160,7 @@ export default function PortfolioSimulator() {
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Portfolio Simulator</h1>
         <p className="text-text-secondary mt-1">
-          Build a custom portfolio and backtest against the S&P 500
+          Build a custom portfolio and backtest against one or more benchmarks (S&P 500, Dow Jones, Nasdaq)
         </p>
       </div>
 
@@ -226,6 +255,22 @@ export default function PortfolioSimulator() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className="text-xs text-text-muted mb-2 block">Benchmarks</label>
+              <div className="flex flex-wrap gap-3">
+                {BENCHMARKS.map((b) => (
+                  <label key={b.symbol} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedBenchmarks.has(b.symbol)}
+                      onChange={() => toggleBenchmark(b.symbol)}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-text-primary">{b.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
             <button
               onClick={runSimulation}
               disabled={isRunning || allocations.length === 0}
@@ -256,23 +301,20 @@ export default function PortfolioSimulator() {
               value={formatPercent(result.metrics.cagr)}
               changeType={result.metrics.cagr >= 0 ? 'positive' : 'negative'}
             />
-            <MetricCard
-              label="S&P 500 Return"
-              term="Total Return"
-              value={formatPercent(result.benchmark_metrics.total_return)}
-              changeType={result.benchmark_metrics.total_return >= 0 ? 'positive' : 'negative'}
-            />
-            <MetricCard
-              label="S&P 500 CAGR"
-              term="CAGR"
-              value={formatPercent(result.benchmark_metrics.cagr)}
-              changeType={result.benchmark_metrics.cagr >= 0 ? 'positive' : 'negative'}
-            />
+            {result.benchmarks.map((b) => (
+              <MetricCard
+                key={b.name}
+                label={`${b.name} Return`}
+                term="Total Return"
+                value={formatPercent(b.metrics.total_return)}
+                changeType={b.metrics.total_return >= 0 ? 'positive' : 'negative'}
+              />
+            ))}
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Portfolio vs S&P 500 (% Return)</CardTitle>
+              <CardTitle>Portfolio vs Benchmarks (% Return)</CardTitle>
             </CardHeader>
             <ResponsiveContainer width="100%" height={400}>
               <LineChart data={chartData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
@@ -286,11 +328,13 @@ export default function PortfolioSimulator() {
                     borderRadius: '8px',
                   }}
                   labelStyle={{ color: '#e4e4ef' }}
-                  formatter={(v: number) => [`${v.toFixed(2)}%`]}
+                  formatter={(v) => [typeof v === 'number' ? `${v.toFixed(2)}%` : String(v)]}
                 />
                 <Legend />
                 <Line type="monotone" dataKey="Portfolio" stroke={CHART_COLORS[0]} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="S&P 500" stroke={CHART_COLORS[3]} strokeWidth={2} dot={false} strokeDasharray="5 5" />
+                {result.benchmarks.map((b, i) => (
+                  <Line key={b.name} type="monotone" dataKey={b.name} stroke={CHART_COLORS[(i + 1) % CHART_COLORS.length]} strokeWidth={2} dot={false} strokeDasharray="5 5" />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </Card>
@@ -305,7 +349,9 @@ export default function PortfolioSimulator() {
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 text-text-muted font-medium">Metric</th>
                     <th className="text-right py-3 px-4 text-text-muted font-medium">Portfolio</th>
-                    <th className="text-right py-3 px-4 text-text-muted font-medium">S&P 500</th>
+                    {result.benchmarks.map((b) => (
+                      <th key={b.name} className="text-right py-3 px-4 text-text-muted font-medium">{b.name}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -326,11 +372,13 @@ export default function PortfolioSimulator() {
                           ? result.metrics[key].toFixed(2)
                           : formatPercent(result.metrics[key])}
                       </td>
-                      <td className="py-3 px-4 text-right text-text-secondary font-mono">
-                        {key === 'sharpe_ratio' || key === 'sortino_ratio'
-                          ? result.benchmark_metrics[key].toFixed(2)
-                          : formatPercent(result.benchmark_metrics[key])}
-                      </td>
+                      {result.benchmarks.map((b) => (
+                        <td key={b.name} className="py-3 px-4 text-right text-text-secondary font-mono">
+                          {key === 'sharpe_ratio' || key === 'sortino_ratio'
+                            ? b.metrics[key].toFixed(2)
+                            : formatPercent(b.metrics[key])}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
