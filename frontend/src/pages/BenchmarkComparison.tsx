@@ -14,31 +14,38 @@ import {
   Legend,
 } from 'recharts'
 
+const BENCHMARK_STRATEGIES = ['sp500_benchmark', 'dow_benchmark', 'nasdaq_benchmark'] as const
+
 export default function BenchmarkComparison() {
-  const benchmarks = useQuery({
-    queryKey: ['benchmarks'],
-    queryFn: () => api.getBenchmarks(),
+  const comparison = useQuery({
+    queryKey: ['benchmarkComparison', BENCHMARK_STRATEGIES],
+    queryFn: () => api.getStrategyComparison(BENCHMARK_STRATEGIES, 2016, 2025),
   })
 
   const normalizedData = useMemo(() => {
-    if (!benchmarks.data?.length) return []
-    const ref = benchmarks.data[0]
-    return ref.dates.map((date, i) => {
-      const point: Record<string, any> = { date }
-      benchmarks.data!.forEach((b) => {
-        point[b.index_name] = ((b.normalized_values[i] - 1) * 100)
+    const data = comparison.data
+    if (!data?.length) return []
+
+    const ref = data[0]
+    const n = Math.min(...data.map((d) => d.dates.length))
+    return ref.dates.slice(0, n).map((date, i) => {
+      const point: Record<string, string | number> = { date }
+      data.forEach((s) => {
+        const label = s.name.replace(' Benchmark', '')
+        point[label] = ((s.cumulative_returns[i] - 1) * 100)
       })
       return point
     })
-  }, [benchmarks.data])
+  }, [comparison.data])
 
   const correlationMatrix = useMemo(() => {
-    if (!benchmarks.data || benchmarks.data.length < 2) return null
+    const data = comparison.data
+    if (!data || data.length < 2) return null
 
-    const returns = benchmarks.data.map((b) => {
+    const returns = data.map((s) => {
       const r: number[] = []
-      for (let i = 1; i < b.normalized_values.length; i++) {
-        r.push((b.normalized_values[i] - b.normalized_values[i - 1]) / b.normalized_values[i - 1])
+      for (let i = 1; i < s.cumulative_returns.length; i++) {
+        r.push((s.cumulative_returns[i] / s.cumulative_returns[i - 1]) - 1)
       }
       return r
     })
@@ -55,6 +62,7 @@ export default function BenchmarkComparison() {
         const a = returns[i]
         const b = returns[j]
         const len = Math.min(a.length, b.length)
+        if (len === 0) continue
         const meanA = a.slice(0, len).reduce((s, v) => s + v, 0) / len
         const meanB = b.slice(0, len).reduce((s, v) => s + v, 0) / len
         let cov = 0, varA = 0, varB = 0
@@ -70,13 +78,18 @@ export default function BenchmarkComparison() {
     }
 
     return matrix
-  }, [benchmarks.data])
+  }, [comparison.data])
+
+  const labels = useMemo(
+    () => (comparison.data ?? []).map((s) => s.name.replace(' Benchmark', '')),
+    [comparison.data]
+  )
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Benchmark Comparison</h1>
-        <p className="text-text-secondary mt-1">Compare major market indices side by side</p>
+        <p className="text-text-secondary mt-1">Compare S&P 500, Dow Jones, and Nasdaq side by side</p>
       </div>
 
       <Card>
@@ -87,8 +100,8 @@ export default function BenchmarkComparison() {
           <ResponsiveContainer width="100%" height={450}>
             <LineChart data={normalizedData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-              <XAxis dataKey="date" stroke="#55556a" tickFormatter={(d) => d.slice(0, 7)} minTickGap={80} />
-              <YAxis stroke="#55556a" tickFormatter={(v) => `${v.toFixed(0)}%`} />
+              <XAxis dataKey="date" stroke="#55556a" tickFormatter={(d) => String(d).slice(0, 7)} minTickGap={80} />
+              <YAxis stroke="#55556a" tickFormatter={(v) => `${Number(v).toFixed(0)}%`} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: '#1a1a25',
@@ -96,14 +109,14 @@ export default function BenchmarkComparison() {
                   borderRadius: '8px',
                 }}
                 labelStyle={{ color: '#e4e4ef' }}
-                formatter={(v: number) => [`${v.toFixed(2)}%`]}
+                formatter={(v) => [typeof v === 'number' ? `${v.toFixed(2)}%` : String(v)]}
               />
               <Legend />
-              {benchmarks.data?.map((b, i) => (
+              {labels.map((label, i) => (
                 <Line
-                  key={b.index_symbol}
+                  key={label}
                   type="monotone"
-                  dataKey={b.index_name}
+                  dataKey={label}
                   stroke={CHART_COLORS[i % CHART_COLORS.length]}
                   strokeWidth={2}
                   dot={false}
@@ -113,12 +126,12 @@ export default function BenchmarkComparison() {
           </ResponsiveContainer>
         ) : (
           <div className="h-[450px] flex items-center justify-center text-text-muted">
-            {benchmarks.isLoading ? 'Loading benchmark data...' : 'No benchmark data available. Run the index gathering script.'}
+            {comparison.isLoading ? 'Loading benchmark data...' : 'No benchmark data available. Run the price/index gathering scripts.'}
           </div>
         )}
       </Card>
 
-      {correlationMatrix && benchmarks.data && (
+      {correlationMatrix && labels.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Correlation Matrix</CardTitle>
@@ -128,17 +141,17 @@ export default function BenchmarkComparison() {
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 text-text-muted font-medium"></th>
-                  {benchmarks.data.map((b) => (
-                    <th key={b.index_symbol} className="text-center py-3 px-4 text-text-muted font-medium">
-                      {b.index_name}
+                  {labels.map((label) => (
+                    <th key={label} className="text-center py-3 px-4 text-text-muted font-medium">
+                      {label}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {benchmarks.data.map((b, i) => (
-                  <tr key={b.index_symbol} className="border-b border-border-subtle">
-                    <td className="py-3 px-4 text-text-secondary font-medium">{b.index_name}</td>
+                {labels.map((label, i) => (
+                  <tr key={label} className="border-b border-border-subtle">
+                    <td className="py-3 px-4 text-text-secondary font-medium">{label}</td>
                     {correlationMatrix[i].map((corr, j) => {
                       const intensity = Math.abs(corr)
                       const bg =
