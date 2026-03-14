@@ -57,7 +57,17 @@ export default function Dashboard() {
     company: r.company_name,
   })) ?? []
 
-  const benchmarks = benchmarkLatest.data ?? []
+  const benchmarks = (benchmarkLatest.data ?? []).filter(
+    (b) => ['^GSPC', '^DJI', '^IXIC'].includes(b.index_symbol)
+  )
+  const orderedBenchmarks = ['^GSPC', '^DJI', '^IXIC']
+    .map((sym) => benchmarks.find((b) => b.index_symbol === sym))
+    .filter((b): b is NonNullable<typeof b> => b != null)
+
+  const formatCloseDate = (dateStr: string) => {
+    const d = new Date(dateStr)
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
 
   return (
     <div className="space-y-6">
@@ -67,13 +77,13 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {benchmarks.length > 0 ? (
-          benchmarks.slice(0, 3).map((b) => (
+        {orderedBenchmarks.length > 0 ? (
+          orderedBenchmarks.map((b) => (
             <MetricCard
               key={b.index_symbol}
               label={b.index_name}
               value={b.close.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-              change="Latest close"
+              change={`Latest close (${formatCloseDate(b.date)})`}
               changeType="neutral"
             />
           ))
