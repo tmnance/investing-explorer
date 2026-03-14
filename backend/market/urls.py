@@ -14,4 +14,6 @@ urlpatterns = [
     path('strategies/', views.available_strategies, name='available-strategies'),
     path('strategies/compare/', views.strategy_comparison, name='strategy-comparison'),
     path('simulator/', views.portfolio_simulator, name='portfolio-simulator'),
+    path('sync/status/', views.sync_status, name='sync-status'),
+    path('sync/', views.sync_data, name='sync-data'),
 ]

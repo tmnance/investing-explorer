@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { MetricCard } from '@/components/ui/MetricCard'
@@ -11,7 +11,7 @@ import {
 } from 'recharts'
 import { CHART_COLORS } from '@/lib/utils'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, TrendingUp, RefreshCw } from 'lucide-react'
 
 function TreemapContent(props: any) {
   const { x, y, width, height, name, value } = props
@@ -51,6 +51,22 @@ export default function Dashboard() {
     queryFn: () => api.getBenchmarkLatest(),
   })
 
+  const syncStatus = useQuery({
+    queryKey: ['syncStatus'],
+    queryFn: () => api.getSyncStatus(),
+  })
+
+  const queryClient = useQueryClient()
+  const syncMutation = useMutation({
+    mutationFn: () => api.syncData(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['benchmarkLatest'] })
+      queryClient.invalidateQueries({ queryKey: ['syncStatus'] })
+      queryClient.invalidateQueries({ queryKey: ['prices'] })
+      queryClient.invalidateQueries({ queryKey: ['benchmarks'] })
+    },
+  })
+
   const treemapData = rankings.data?.results?.map((r) => ({
     name: r.ticker,
     value: r.market_cap,
@@ -65,16 +81,45 @@ export default function Dashboard() {
     .filter((b): b is NonNullable<typeof b> => b != null)
 
   const formatCloseDate = (dateStr: string) => {
-    const d = new Date(dateStr)
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const date = new Date(y, m - 1, d)
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
+
+  const latestDate = syncStatus.data?.indices_latest ?? syncStatus.data?.prices_latest
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
-        <p className="text-text-secondary mt-1">Market overview and key metrics</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
+          <p className="text-text-secondary mt-1">
+            Market overview and key metrics
+            {latestDate && (
+              <span className="ml-2 text-text-muted">· Data through {formatCloseDate(latestDate)}</span>
+            )}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => syncMutation.mutate()}
+          disabled={syncMutation.isPending}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-secondary hover:bg-surface-elevated hover:text-text-primary disabled:opacity-50 transition-colors"
+          title="Fetch latest price and index data from the day after our last records"
+        >
+          <RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+          {syncMutation.isPending ? 'Syncing...' : 'Sync latest data'}
+        </button>
       </div>
+      {syncMutation.isSuccess && (
+        <div className="text-sm text-green">
+          Synced {syncMutation.data?.price_records ?? 0} price records, {syncMutation.data?.index_records ?? 0} index records.
+          {syncMutation.data?.errors?.length ? ` (${syncMutation.data.errors.length} errors)` : ''}
+        </div>
+      )}
+      {syncMutation.isError && (
+        <div className="text-sm text-red">{String(syncMutation.error)}</div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {orderedBenchmarks.length > 0 ? (

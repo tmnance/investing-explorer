@@ -15,6 +15,7 @@ import pandas as pd
 from datetime import date as date_cls
 from .analytics.strategies import get_available_strategies, run_strategy
 from .analytics.metrics import compute_all_metrics
+from .sync import get_sync_status, run_sync
 
 
 class CompanyViewSet(viewsets.ReadOnlyModelViewSet):
@@ -268,3 +269,14 @@ def portfolio_simulator(request):
         'metrics': p_metrics,
         'benchmark_metrics': b_metrics,
     })
+
+
+@api_view(['GET'])
+def sync_status(request):
+    return Response(get_sync_status())
+
+
+@api_view(['POST'])
+def sync_data(request):
+    result = run_sync()
+    return Response(result)

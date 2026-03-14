@@ -10,6 +10,12 @@ async function request<T>(path: string, params?: Record<string, string>): Promis
   return res.json()
 }
 
+async function post<T>(path: string): Promise<T> {
+  const res = await fetch(`${window.location.origin}${BASE_URL}${path}`, { method: 'POST' })
+  if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`)
+  return res.json()
+}
+
 export interface Company {
   ticker: string
   name: string
@@ -106,4 +112,15 @@ export const api = {
 
   getAvailableStrategies: () =>
     request<{ id: string; name: string; description: string }[]>('/strategies/'),
+
+  getSyncStatus: () =>
+    request<{ prices_latest: string | null; indices_latest: string | null }>('/sync/status/'),
+
+  syncData: () =>
+    post<{
+      price_records: number
+      index_records: number
+      errors: string[]
+      status: { prices_latest: string | null; indices_latest: string | null }
+    }>('/sync/'),
 }
