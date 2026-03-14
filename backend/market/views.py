@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from django.db.models import Max, Min
+from django.db import connection
 from .models import Company, MarketCapRanking, PriceHistory, BenchmarkIndex
 from .serializers import (
     CompanySerializer,
@@ -16,6 +17,7 @@ from datetime import date as date_cls
 from .analytics.strategies import get_available_strategies, run_strategy
 from .analytics.metrics import compute_all_metrics
 from .sync import get_sync_status, run_sync
+from .ticker_aliases import resolve_ticker_for_lookup
 
 
 class CompanyViewSet(viewsets.ReadOnlyModelViewSet):
@@ -23,6 +25,14 @@ class CompanyViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CompanySerializer
     lookup_field = 'ticker'
     pagination_class = None
+
+    def get_object(self):
+        ticker = self.kwargs.get(self.lookup_field)
+        if ticker:
+            canonical = resolve_ticker_for_lookup(ticker)
+            if canonical:
+                self.kwargs = {**self.kwargs, self.lookup_field: canonical}
+        return super().get_object()
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -46,7 +56,8 @@ class MarketCapRankingViewSet(viewsets.ReadOnlyModelViewSet):
         if year:
             qs = qs.filter(year=year)
         if ticker:
-            qs = qs.filter(company__ticker=ticker)
+            lookup_ticker = resolve_ticker_for_lookup(ticker) or ticker
+            qs = qs.filter(company__ticker=lookup_ticker)
         return qs
 
     def list(self, request, *args, **kwargs):
@@ -101,20 +112,26 @@ class MarketCapRankingViewSet(viewsets.ReadOnlyModelViewSet):
             if ticker not in previous
         ]
 
-        serializer = MarketCapRankingSerializer
-        gainers = serializer(
+        context = self.get_serializer_context()
+        gainers = MarketCapRankingSerializer(
             [m[0] for m in gainers_raw[:5]] + new_entries[:3],
             many=True,
+            context=context,
         ).data
-        losers = serializer([m[0] for m in losers_raw[:5]], many=True).data
+        losers = MarketCapRankingSerializer(
+            [m[0] for m in losers_raw[:5]],
+            many=True,
+            context=context,
+        ).data
 
         return Response({'gainers': gainers, 'losers': losers})
 
 
 @api_view(['GET'])
 def price_history(request, ticker):
+    lookup_ticker = resolve_ticker_for_lookup(ticker) or ticker
     try:
-        company = Company.objects.get(ticker=ticker)
+        company = Company.objects.get(ticker=lookup_ticker)
     except Company.DoesNotExist:
         return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -131,33 +148,46 @@ def price_history(request, ticker):
     return Response(serializer.data)
 
 
+MAX_BENCHMARK_POINTS = 500
+
+
 @api_view(['GET'])
 def benchmark_data(request):
     start_date = request.query_params.get('start_date', '2015-01-01')
-    end_date = request.query_params.get('end_date')
+    end_date = request.query_params.get('end_date') or str(date_cls.today())
 
-    symbols = BenchmarkIndex.objects.values_list('index_symbol', flat=True).distinct()
+    symbols = list(BenchmarkIndex.objects.values_list('index_symbol', flat=True).distinct())
+    if not symbols:
+        return Response([])
 
     result = []
-    for symbol in symbols:
-        qs = BenchmarkIndex.objects.filter(
-            index_symbol=symbol,
-            date__gte=start_date,
-        )
-        if end_date:
-            qs = qs.filter(date__lte=end_date)
+    with connection.cursor() as cursor:
+        for symbol in symbols:
+            cursor.execute(
+                """
+                SELECT date, close, index_name FROM (
+                    SELECT date, close, index_name,
+                           ROW_NUMBER() OVER (ORDER BY date) - 1 AS rn
+                    FROM market_benchmarkindex
+                    WHERE index_symbol = %s AND date >= %s AND date <= %s
+                ) sub
+                WHERE rn %% 5 = 0
+                ORDER BY date
+                """,
+                [symbol, start_date, end_date],
+            )
+            rows = cursor.fetchall()
+            if not rows:
+                continue
 
-        records = list(qs.order_by('date'))
-        if not records:
-            continue
-
-        base = records[0].close
-        result.append({
-            'index_symbol': symbol,
-            'index_name': records[0].index_name,
-            'dates': [str(r.date) for r in records],
-            'normalized_values': [r.close / base for r in records],
-        })
+            first_close = float(rows[0][1])
+            index_name = rows[0][2]
+            result.append({
+                'index_symbol': symbol,
+                'index_name': index_name,
+                'dates': [str(r[0]) for r in rows],
+                'normalized_values': [float(r[1]) / first_close for r in rows],
+            })
 
     return Response(result)
 

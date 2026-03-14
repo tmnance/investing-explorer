@@ -56,6 +56,20 @@ class PriceHistory(models.Model):
         return f"{self.company.ticker} {self.date}: ${self.close:.2f}"
 
 
+class TickerAlias(models.Model):
+    """Maps old ticker symbols to canonical tickers when a company renames its ticker."""
+    old_ticker = models.CharField(max_length=10, db_index=True)
+    canonical_ticker = models.CharField(max_length=10)
+    effective_date = models.DateField()
+
+    class Meta:
+        verbose_name_plural = 'ticker aliases'
+        ordering = ['old_ticker']
+
+    def __str__(self):
+        return f"{self.old_ticker} -> {self.canonical_ticker} (from {self.effective_date})"
+
+
 class BenchmarkIndex(models.Model):
     index_symbol = models.CharField(max_length=20)
     index_name = models.CharField(max_length=100)

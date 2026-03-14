@@ -1,6 +1,7 @@
 import csv
 from django.core.management.base import BaseCommand
 from market.models import Company, MarketCapRanking
+from market.ticker_aliases import resolve_canonical
 
 
 def parse_market_cap(s):
@@ -32,11 +33,13 @@ class Command(BaseCommand):
         with open(path, newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                ticker = row['ticker'].strip()
+                raw_ticker = row['ticker'].strip()
                 name = row['company'].strip()
                 year = int(row['year'])
                 rank = int(row['rank'])
                 market_cap = parse_market_cap(row['market_cap'])
+
+                ticker = resolve_canonical(raw_ticker, year)
 
                 company, created = Company.objects.get_or_create(
                     ticker=ticker,
