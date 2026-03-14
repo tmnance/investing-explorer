@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { MetricCard } from '@/components/ui/MetricCard'
+import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatMarketCap } from '@/lib/utils'
 import {
   Treemap,
@@ -88,7 +89,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Top 20 by Market Cap (2025)</CardTitle>
+            <CardTitle>Top 20 by <TermTooltip term="Market Cap">Market Cap</TermTooltip> (2025)</CardTitle>
           </CardHeader>
           {treemapData.length > 0 ? (
             <ResponsiveContainer width="100%" height={380}>
@@ -126,7 +127,7 @@ export default function Dashboard() {
           {movers.data ? (
             <div className="space-y-3">
               <div>
-                <p className="text-xs text-text-muted mb-2 uppercase tracking-wider">Gained Rank</p>
+                <p className="text-xs text-text-muted mb-2 uppercase tracking-wider">Gained <TermTooltip term="Rank">Rank</TermTooltip></p>
                 {movers.data.gainers.slice(0, 4).map((g) => (
                   <Link
                     key={g.ticker}
@@ -144,7 +145,7 @@ export default function Dashboard() {
                 ))}
               </div>
               <div className="border-t border-border pt-3">
-                <p className="text-xs text-text-muted mb-2 uppercase tracking-wider">Lost Rank</p>
+                <p className="text-xs text-text-muted mb-2 uppercase tracking-wider">Lost <TermTooltip term="Rank">Rank</TermTooltip></p>
                 {movers.data.losers.slice(0, 4).map((l) => (
                   <Link
                     key={l.ticker}

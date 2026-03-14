@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, type StrategyResult } from '@/api/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
+import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatPercent, CHART_COLORS } from '@/lib/utils'
 import {
   LineChart,
@@ -175,12 +176,24 @@ export default function StrategyComparison() {
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 text-text-muted font-medium">Strategy</th>
-                    <th className="text-right py-3 px-4 text-text-muted font-medium">Total Return</th>
-                    <th className="text-right py-3 px-4 text-text-muted font-medium">CAGR</th>
-                    <th className="text-right py-3 px-4 text-text-muted font-medium">Volatility</th>
-                    <th className="text-right py-3 px-4 text-text-muted font-medium">Sharpe</th>
-                    <th className="text-right py-3 px-4 text-text-muted font-medium">Sortino</th>
-                    <th className="text-right py-3 px-4 text-text-muted font-medium">Max DD</th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Total Return">Total Return</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="CAGR">CAGR</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Volatility">Volatility</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Sharpe Ratio">Sharpe</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Sortino Ratio">Sortino</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Max DD">Max DD</TermTooltip>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

@@ -142,11 +142,11 @@ def top10_market_cap(start_year: int = 2016, end_year: int = 2025) -> dict:
 
 
 @register_strategy(
-    'top20_equal_weight',
-    'Top 20 Equal Weight',
-    'Equal weight all top 20 companies, rebalance annually',
+    'top20_market_cap',
+    'Top 20 Market Cap',
+    'Buy the top 20 companies by market cap each year, equal weight, rebalance annually',
 )
-def top20_equal_weight(start_year: int = 2016, end_year: int = 2025) -> dict:
+def top20_market_cap(start_year: int = 2016, end_year: int = 2025) -> dict:
     return _top_n_strategy(20, start_year, end_year)
 
 

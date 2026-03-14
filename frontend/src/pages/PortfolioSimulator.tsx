@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react'
 import { api } from '@/api/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { MetricCard } from '@/components/ui/MetricCard'
+import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatPercent, CHART_COLORS } from '@/lib/utils'
 import { Plus, Trash2, Play } from 'lucide-react'
 import {
@@ -245,21 +246,25 @@ export default function PortfolioSimulator() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <MetricCard
               label="Portfolio Return"
+              term="Total Return"
               value={formatPercent(result.metrics.total_return)}
               changeType={result.metrics.total_return >= 0 ? 'positive' : 'negative'}
             />
             <MetricCard
               label="Portfolio CAGR"
+              term="CAGR"
               value={formatPercent(result.metrics.cagr)}
               changeType={result.metrics.cagr >= 0 ? 'positive' : 'negative'}
             />
             <MetricCard
               label="S&P 500 Return"
+              term="Total Return"
               value={formatPercent(result.benchmark_metrics.total_return)}
               changeType={result.benchmark_metrics.total_return >= 0 ? 'positive' : 'negative'}
             />
             <MetricCard
               label="S&P 500 CAGR"
+              term="CAGR"
               value={formatPercent(result.benchmark_metrics.cagr)}
               changeType={result.benchmark_metrics.cagr >= 0 ? 'positive' : 'negative'}
             />
@@ -305,15 +310,17 @@ export default function PortfolioSimulator() {
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Total Return', key: 'total_return' as const },
-                    { label: 'CAGR', key: 'cagr' as const },
-                    { label: 'Volatility', key: 'volatility' as const },
-                    { label: 'Sharpe Ratio', key: 'sharpe_ratio' as const },
-                    { label: 'Sortino Ratio', key: 'sortino_ratio' as const },
-                    { label: 'Max Drawdown', key: 'max_drawdown' as const },
-                  ].map(({ label, key }) => (
+                    { label: 'Total Return', term: 'Total Return' as const, key: 'total_return' as const },
+                    { label: 'CAGR', term: 'CAGR' as const, key: 'cagr' as const },
+                    { label: 'Volatility', term: 'Volatility' as const, key: 'volatility' as const },
+                    { label: 'Sharpe Ratio', term: 'Sharpe Ratio' as const, key: 'sharpe_ratio' as const },
+                    { label: 'Sortino Ratio', term: 'Sortino Ratio' as const, key: 'sortino_ratio' as const },
+                    { label: 'Max Drawdown', term: 'Max Drawdown' as const, key: 'max_drawdown' as const },
+                  ].map(({ label, term, key }) => (
                     <tr key={key} className="border-b border-border-subtle">
-                      <td className="py-3 px-4 text-text-secondary">{label}</td>
+                      <td className="py-3 px-4 text-text-secondary">
+                        <TermTooltip term={term}>{label}</TermTooltip>
+                      </td>
                       <td className="py-3 px-4 text-right text-text-primary font-mono">
                         {key === 'sharpe_ratio' || key === 'sortino_ratio'
                           ? result.metrics[key].toFixed(2)

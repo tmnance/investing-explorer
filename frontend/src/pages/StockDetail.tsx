@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { MetricCard } from '@/components/ui/MetricCard'
+import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatMarketCap, formatPercent, CHART_COLORS } from '@/lib/utils'
 import { ArrowLeft } from 'lucide-react'
 import {
@@ -130,16 +131,19 @@ export default function StockDetail() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <MetricCard
             label="Total Return"
+            term="Total Return"
             value={formatPercent(metrics.totalReturn)}
             changeType={metrics.totalReturn >= 0 ? 'positive' : 'negative'}
           />
           <MetricCard
             label="CAGR"
+            term="CAGR"
             value={formatPercent(metrics.cagr)}
             changeType={metrics.cagr >= 0 ? 'positive' : 'negative'}
           />
           <MetricCard
             label="Max Drawdown"
+            term="Max Drawdown"
             value={formatPercent(metrics.maxDrawdown)}
             changeType="negative"
           />
@@ -210,7 +214,7 @@ export default function StockDetail() {
       {rankHistory.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Market Cap Rank History</CardTitle>
+            <CardTitle><TermTooltip term="Market Cap">Market Cap</TermTooltip> <TermTooltip term="Rank">Rank</TermTooltip> History</CardTitle>
           </CardHeader>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={rankHistory} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
@@ -233,8 +237,8 @@ export default function StockDetail() {
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-2 px-3 text-text-muted font-medium">Year</th>
-                  <th className="text-left py-2 px-3 text-text-muted font-medium">Rank</th>
-                  <th className="text-right py-2 px-3 text-text-muted font-medium">Market Cap</th>
+                  <th className="text-left py-2 px-3 text-text-muted font-medium"><TermTooltip term="Rank">Rank</TermTooltip></th>
+                  <th className="text-right py-2 px-3 text-text-muted font-medium"><TermTooltip term="Market Cap">Market Cap</TermTooltip></th>
                 </tr>
               </thead>
               <tbody>
