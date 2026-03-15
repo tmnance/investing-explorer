@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
-from django.db.models import Max, Min
+from django.db.models import Max, Min, OuterRef, Subquery
 from django.db import connection
 from .models import Company, MarketCapRanking, PriceHistory, BenchmarkIndex
 from .serializers import (
@@ -194,13 +194,17 @@ def benchmark_data(request):
 
 @api_view(['GET'])
 def benchmark_latest(request):
-    symbols = BenchmarkIndex.objects.values_list('index_symbol', flat=True).distinct()
-    latest = []
-    for symbol in symbols:
-        record = BenchmarkIndex.objects.filter(index_symbol=symbol).order_by('-date').first()
-        if record:
-            latest.append(BenchmarkIndexSerializer(record).data)
-    return Response(latest)
+    # Single query: latest record per index_symbol (one row per symbol)
+    latest_pks = BenchmarkIndex.objects.filter(
+        index_symbol=OuterRef('index_symbol'),
+    ).order_by('-date').values('pk')[:1]
+    qs = BenchmarkIndex.objects.filter(
+        pk__in=BenchmarkIndex.objects.values('index_symbol').annotate(
+            latest_pk=Subquery(latest_pks),
+        ).values_list('latest_pk', flat=True),
+    ).order_by('index_symbol')
+    data = BenchmarkIndexSerializer(qs, many=True).data
+    return Response(data)
 
 
 @api_view(['GET'])

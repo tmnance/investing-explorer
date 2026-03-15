@@ -152,6 +152,7 @@ export default function Dashboard() {
                 data={treemapData}
                 dataKey="value"
                 aspectRatio={4 / 3}
+                isAnimationActive={false}
                 content={<TreemapContent />}
               >
                 <Tooltip
