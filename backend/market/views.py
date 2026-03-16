@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from datetime import date as date_cls
 from .analytics.strategies import get_available_strategies, run_strategy
+from .analytics.momentum import run_momentum_detail, run_momentum_matrix
 from .analytics.metrics import compute_all_metrics
 from .market_cap import get_realtime_rankings
 from .sync import get_sync_status, run_sync
@@ -401,6 +402,22 @@ def portfolio_simulator(request):
         'benchmarks': benchmarks_data,
         'metrics': p_metrics,
     })
+
+
+@api_view(['GET'])
+def momentum_detail(request):
+    top_n = int(request.query_params.get('top_n', 5))
+    start_year = int(request.query_params.get('start_year', 2016))
+    end_year = int(request.query_params.get('end_year', 2025))
+    top_n = max(1, min(top_n, 20))
+    return Response(run_momentum_detail(top_n=top_n, start_year=start_year, end_year=end_year))
+
+
+@api_view(['GET'])
+def momentum_matrix(request):
+    top_n = int(request.query_params.get('top_n', 5))
+    top_n = max(1, min(top_n, 20))
+    return Response(run_momentum_matrix(top_n=top_n))
 
 
 @api_view(['GET'])

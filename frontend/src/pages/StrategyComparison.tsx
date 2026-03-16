@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatPercent, CHART_COLORS } from '@/lib/utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { Link } from 'react-router-dom'
 import {
   LineChart,
   Line,
@@ -114,7 +115,12 @@ export default function StrategyComparison() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Strategy Comparison</h1>
-        <p className="text-text-secondary mt-1">Compare investment strategies against benchmarks</p>
+        <p className="text-text-secondary mt-1">
+          Compare investment strategies against benchmarks ·{' '}
+          <Link to="/strategies/momentum" className="text-accent hover:underline">
+            Explore Momentum strategy in depth →
+          </Link>
+        </p>
       </div>
 
       <Card>

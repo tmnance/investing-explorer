@@ -40,6 +40,8 @@ export const GLOSSARY: Record<string, string> = {
     'The highest single-year return achieved by the strategy over the backtest period.',
   'Worst Year':
     'The lowest single-year return (largest loss) suffered by the strategy over the backtest period.',
+  'Momentum Top N':
+    'The number of companies to include in the momentum portfolio. These are the N companies that gained the most market-cap rank positions vs the prior year.',
 }
 
 export type GlossaryTerm = keyof typeof GLOSSARY

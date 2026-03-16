@@ -6,6 +6,7 @@ import MarketCapExplorer from '@/pages/MarketCapExplorer'
 import StockList from '@/pages/StockList'
 import StockDetail from '@/pages/StockDetail'
 import StrategyComparison from '@/pages/StrategyComparison'
+import MomentumExplorer from '@/pages/MomentumExplorer'
 import BenchmarkComparison from '@/pages/BenchmarkComparison'
 import PortfolioSimulator from '@/pages/PortfolioSimulator'
 
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/stocks" element={<StockList />} />
             <Route path="/stocks/:ticker" element={<StockDetail />} />
             <Route path="/strategies" element={<StrategyComparison />} />
+            <Route path="/strategies/momentum" element={<MomentumExplorer />} />
             <Route path="/benchmarks" element={<BenchmarkComparison />} />
             <Route path="/simulator" element={<PortfolioSimulator />} />
           </Route>

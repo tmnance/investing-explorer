@@ -85,6 +85,39 @@ export interface BenchmarkComparison {
   normalized_values: number[]
 }
 
+export interface MomentumHolding {
+  ticker: string
+  prev_rank: number
+  curr_rank: number
+  rank_change: number
+}
+
+export interface MomentumEvent {
+  year: number
+  holdings: MomentumHolding[]
+  buys: string[]
+  sells: string[]
+  year_return: number
+  portfolio_value: number
+}
+
+export interface MomentumDetail {
+  top_n: number
+  start_year: number
+  end_year: number
+  dates: string[]
+  cumulative_returns: number[]
+  events: MomentumEvent[]
+  metrics: Record<string, number>
+}
+
+export interface MomentumMatrixCell {
+  start: number
+  end: number
+  cagr: number
+  total_return: number
+}
+
 export const api = {
   getCompanies: () =>
     request<PaginatedResponse<Company>>('/companies/'),
@@ -119,6 +152,12 @@ export const api = {
 
   getAvailableStrategies: () =>
     request<{ id: string; name: string; description: string }[]>('/strategies/'),
+
+  getMomentumDetail: (params: { top_n?: number; start_year?: number; end_year?: number }) =>
+    request<MomentumDetail>('/strategies/momentum/', params as Record<string, string>),
+
+  getMomentumMatrix: (params?: { top_n?: number }) =>
+    request<MomentumMatrixCell[]>('/strategies/momentum/matrix/', params as Record<string, string>),
 
   getSyncStatus: () =>
     request<{ prices_latest: string | null; indices_latest: string | null }>('/sync/status/'),
