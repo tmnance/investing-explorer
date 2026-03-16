@@ -35,10 +35,12 @@ function TreemapContent(props: any) {
   )
 }
 
+const CURRENT_YEAR = String(new Date().getFullYear())
+
 export default function Dashboard() {
   const rankings = useQuery({
-    queryKey: ['rankings', { year: '2025' }],
-    queryFn: () => api.getMarketCapRankings({ year: '2025' }),
+    queryKey: ['rankings', { year: CURRENT_YEAR }],
+    queryFn: () => api.getMarketCapRankings({ year: CURRENT_YEAR }),
   })
 
   const movers = useQuery({
@@ -144,7 +146,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Top 20 by <TermTooltip term="Market Cap">Market Cap</TermTooltip> (2025)</CardTitle>
+            <CardTitle>Top 20 by <TermTooltip term="Market Cap">Market Cap</TermTooltip> ({CURRENT_YEAR})</CardTitle>
           </CardHeader>
           {treemapData.length > 0 ? (
             <ResponsiveContainer width="100%" height={380}>

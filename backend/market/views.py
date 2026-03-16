@@ -16,6 +16,7 @@ import pandas as pd
 from datetime import date as date_cls
 from .analytics.strategies import get_available_strategies, run_strategy
 from .analytics.metrics import compute_all_metrics
+from .market_cap import get_realtime_rankings
 from .sync import get_sync_status, run_sync
 from .ticker_aliases import resolve_ticker_for_lookup
 
@@ -49,6 +50,37 @@ class MarketCapRankingViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MarketCapRankingSerializer
     pagination_class = None
 
+    def _current_year_if_needed(self):
+        """
+        Return the current calendar year if it's beyond the latest ranking
+        year and we have price data for it; otherwise None.
+        """
+        latest_ranking_year = MarketCapRanking.objects.aggregate(Max('year'))['year__max']
+        if not latest_ranking_year:
+            return None
+        current_year = date_cls.today().year
+        if current_year <= latest_ranking_year:
+            return None
+        has_prices = PriceHistory.objects.filter(
+            date__year=current_year,
+        ).exists()
+        return current_year if has_prices else None
+
+    def _realtime_rankings_data(self, current_year, ticker_filter=None):
+        """Build serializer-compatible dicts for the computed current year."""
+        rows = get_realtime_rankings(limit=20)
+        data = [{
+            'id': -(i + 1),
+            'year': current_year,
+            'rank': r['rank'],
+            'ticker': r['ticker'],
+            'company_name': r['name'],
+            'market_cap': r['estimated_market_cap'],
+        } for i, r in enumerate(rows)]
+        if ticker_filter:
+            data = [d for d in data if d['ticker'] == ticker_filter]
+        return data
+
     def get_queryset(self):
         qs = MarketCapRanking.objects.select_related('company').all()
         year = self.request.query_params.get('year')
@@ -60,25 +92,53 @@ class MarketCapRankingViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(company__ticker=lookup_ticker)
         return qs
 
+    def _resolve_ticker_param(self):
+        """Return the canonical ticker from the query params, or None."""
+        ticker = self.request.query_params.get('ticker')
+        if not ticker:
+            return None
+        return resolve_ticker_for_lookup(ticker) or ticker
+
     def list(self, request, *args, **kwargs):
+        year_param = request.query_params.get('year')
+        current_year = self._current_year_if_needed()
+        ticker_filter = self._resolve_ticker_param()
+
+        if year_param and current_year and int(year_param) == current_year:
+            data = self._realtime_rankings_data(current_year, ticker_filter)
+            return Response({
+                'count': len(data),
+                'next': None,
+                'previous': None,
+                'results': data,
+            })
+
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
+        results = list(serializer.data)
+
+        if not year_param and current_year:
+            results.extend(self._realtime_rankings_data(current_year, ticker_filter))
+
         return Response({
-            'count': len(serializer.data),
+            'count': len(results),
             'next': None,
             'previous': None,
-            'results': serializer.data,
+            'results': results,
         })
 
     @action(detail=False, methods=['get'])
     def years(self, request):
-        years = (
+        years = list(
             MarketCapRanking.objects
             .values_list('year', flat=True)
             .distinct()
             .order_by('-year')
         )
-        return Response(list(years))
+        current_year = self._current_year_if_needed()
+        if current_year:
+            years.insert(0, current_year)
+        return Response(years)
 
     @action(detail=False, methods=['get'])
     def top_movers(self, request):
@@ -163,6 +223,21 @@ def benchmark_data(request):
     result = []
     with connection.cursor() as cursor:
         for symbol in symbols:
+            # First get the total number of points for this symbol and range
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM market_benchmarkindex
+                WHERE index_symbol = %s AND date >= %s AND date <= %s
+                """,
+                [symbol, start_date, end_date],
+            )
+            total_points = cursor.fetchone()[0] or 0
+            if total_points == 0:
+                continue
+
+            # Compute a sampling step so we never exceed MAX_BENCHMARK_POINTS
+            step = max(1, total_points // MAX_BENCHMARK_POINTS)  # 1 = no sampling
+
             cursor.execute(
                 """
                 SELECT date, close, index_name FROM (
@@ -171,10 +246,10 @@ def benchmark_data(request):
                     FROM market_benchmarkindex
                     WHERE index_symbol = %s AND date >= %s AND date <= %s
                 ) sub
-                WHERE rn %% 5 = 0
+                WHERE rn %% %s = 0
                 ORDER BY date
                 """,
-                [symbol, start_date, end_date],
+                [symbol, start_date, end_date, step],
             )
             rows = cursor.fetchall()
             if not rows:

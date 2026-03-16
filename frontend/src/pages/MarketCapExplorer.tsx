@@ -146,7 +146,12 @@ export default function MarketCapExplorer() {
           <Card className="lg:col-span-3">
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <CardTitle>Rank Trajectory (2016-2025)</CardTitle>
+                <CardTitle>
+                  Rank Trajectory
+                  {years.data && years.data.length >= 2 && (
+                    <span> ({Math.min(...years.data)}–{Math.max(...years.data)})</span>
+                  )}
+                </CardTitle>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs text-text-muted mr-1">Top 20 in:</span>
                   {(years.data ?? []).sort().map((y) => (

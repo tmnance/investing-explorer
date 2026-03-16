@@ -14,17 +14,32 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  BarChart,
-  Bar,
 } from 'recharts'
 import { useState, useMemo } from 'react'
 
 const RANGES = ['1Y', '3Y', '5Y', 'All'] as const
 
+const BENCHMARK_OPTIONS = [
+  { symbol: '^GSPC', label: 'S&P 500' },
+  { symbol: '^DJI', label: 'Dow Jones' },
+  { symbol: '^IXIC', label: 'Nasdaq' },
+] as const
+
 export default function StockDetail() {
   const { ticker } = useParams<{ ticker: string }>()
   const [range, setRange] = useState<typeof RANGES[number]>('All')
-  const [showBenchmark, setShowBenchmark] = useState(false)
+  const [selectedBenchmarks, setSelectedBenchmarks] = useState<Set<string>>(new Set())
+
+  const showBenchmarks = selectedBenchmarks.size > 0
+
+  const toggleBenchmark = (symbol: string) => {
+    setSelectedBenchmarks((prev) => {
+      const next = new Set(prev)
+      if (next.has(symbol)) next.delete(symbol)
+      else next.add(symbol)
+      return next
+    })
+  }
 
   const company = useQuery({
     queryKey: ['company', ticker],
@@ -45,9 +60,19 @@ export default function StockDetail() {
   })
 
   const benchmarks = useQuery({
-    queryKey: ['benchmarks'],
-    queryFn: () => api.getBenchmarks(),
-    enabled: showBenchmark,
+    queryKey: ['benchmarks', { range }],
+    queryFn: () => {
+      const params: { start_date?: string; end_date?: string } = {}
+      if (range !== 'All') {
+        const today = new Date()
+        const start = new Date()
+        start.setFullYear(today.getFullYear() - parseInt(range))
+        params.start_date = start.toISOString().slice(0, 10)
+        params.end_date = today.toISOString().slice(0, 10)
+      }
+      return api.getBenchmarks(params)
+    },
+    enabled: showBenchmarks,
   })
 
   const filteredPrices = useMemo(() => {
@@ -63,9 +88,29 @@ export default function StockDetail() {
     if (!filteredPrices.length) return []
     const basePrice = filteredPrices[0].adj_close
 
-    const spData = showBenchmark
-      ? (benchmarks.data?.find((b) => b.index_symbol === '^GSPC') ?? null)
-      : null
+    // Forward-fill sampled benchmark data and re-normalize to visible range
+    const benchmarkLines: { symbol: string; filled: Map<string, number> }[] = []
+    if (showBenchmarks && benchmarks.data) {
+      for (const b of benchmarks.data) {
+        if (!selectedBenchmarks.has(b.index_symbol)) continue
+
+        const dateMap = new Map<string, number>()
+        b.dates.forEach((d, i) => dateMap.set(d, b.normalized_values[i]))
+
+        const filled = new Map<string, number>()
+        let lastRaw: number | null = null
+        let baseVal: number | null = null
+        for (const p of filteredPrices) {
+          const raw = dateMap.get(p.date)
+          if (raw !== undefined) lastRaw = raw
+          if (lastRaw !== null) {
+            if (baseVal === null) baseVal = lastRaw
+            filled.set(p.date, ((lastRaw / baseVal) - 1) * 100)
+          }
+        }
+        benchmarkLines.push({ symbol: b.index_symbol, filled })
+      }
+    }
 
     return filteredPrices.map((p) => {
       const point: Record<string, any> = {
@@ -73,15 +118,13 @@ export default function StockDetail() {
         price: p.adj_close,
         normalized: ((p.adj_close - basePrice) / basePrice) * 100,
       }
-      if (spData) {
-        const idx = spData.dates.indexOf(p.date)
-        if (idx !== -1) {
-          point.sp500 = (spData.normalized_values[idx] - 1) * 100
-        }
+      for (const bl of benchmarkLines) {
+        const val = bl.filled.get(p.date)
+        if (val !== undefined) point[bl.symbol] = val
       }
       return point
     })
-  }, [filteredPrices, showBenchmark, benchmarks.data])
+  }, [filteredPrices, showBenchmarks, selectedBenchmarks, benchmarks.data])
 
   const metrics = useMemo(() => {
     if (!prices.data || prices.data.length < 2) return null
@@ -158,15 +201,19 @@ export default function StockDetail() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Price History</CardTitle>
           <div className="flex gap-2 items-center">
-            <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showBenchmark}
-                onChange={(e) => setShowBenchmark(e.target.checked)}
-                className="rounded"
-              />
-              S&P 500 overlay
-            </label>
+            <div className="flex gap-3">
+              {BENCHMARK_OPTIONS.map((b) => (
+                <label key={b.symbol} className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedBenchmarks.has(b.symbol)}
+                    onChange={() => toggleBenchmark(b.symbol)}
+                    className="rounded"
+                  />
+                  {b.label}
+                </label>
+              ))}
+            </div>
             <div className="flex gap-1 ml-4">
               {RANGES.map((r) => (
                 <button
@@ -189,7 +236,13 @@ export default function StockDetail() {
             <LineChart data={priceChartData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
               <XAxis dataKey="date" stroke="#55556a" tickFormatter={(d) => d.slice(0, 7)} minTickGap={60} />
-              <YAxis stroke="#55556a" tickFormatter={(v) => `$${v.toFixed(0)}`} />
+              <YAxis
+                stroke="#55556a"
+                tickFormatter={showBenchmarks
+                  ? (v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`
+                  : (v) => `$${v.toFixed(0)}`
+                }
+              />
               <Tooltip
                 contentStyle={{
                   backgroundColor: '#1a1a25',
@@ -197,11 +250,32 @@ export default function StockDetail() {
                   borderRadius: '8px',
                 }}
                 labelStyle={{ color: '#e4e4ef' }}
+                formatter={(value: number, name: string) =>
+                  showBenchmarks
+                    ? [`${value >= 0 ? '+' : ''}${value.toFixed(1)}%`, name]
+                    : [`$${value.toFixed(2)}`, name]
+                }
               />
-              <Line type="monotone" dataKey="price" stroke={CHART_COLORS[0]} strokeWidth={2} dot={false} name={ticker} />
-              {showBenchmark && (
-                <Line type="monotone" dataKey="sp500" stroke={CHART_COLORS[3]} strokeWidth={1.5} dot={false} name="S&P 500" strokeDasharray="5 5" />
-              )}
+              <Line
+                type="monotone"
+                dataKey={showBenchmarks ? 'normalized' : 'price'}
+                stroke={CHART_COLORS[0]}
+                strokeWidth={2}
+                dot={false}
+                name={ticker}
+              />
+              {BENCHMARK_OPTIONS.filter((b) => selectedBenchmarks.has(b.symbol)).map((b, i) => (
+                <Line
+                  key={b.symbol}
+                  type="monotone"
+                  dataKey={b.symbol}
+                  stroke={CHART_COLORS[i + 2]}
+                  strokeWidth={1.5}
+                  dot={false}
+                  name={b.label}
+                  strokeDasharray="5 5"
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         ) : (
@@ -217,7 +291,7 @@ export default function StockDetail() {
             <CardTitle><TermTooltip term="Market Cap">Market Cap</TermTooltip> <TermTooltip term="Rank">Rank</TermTooltip> History</CardTitle>
           </CardHeader>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={rankHistory} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
+            <LineChart data={rankHistory} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
               <XAxis dataKey="year" stroke="#55556a" />
               <YAxis reversed domain={[1, 20]} stroke="#55556a" />
@@ -229,8 +303,8 @@ export default function StockDetail() {
                 }}
                 formatter={(value: number) => [`#${value}`, 'Rank']}
               />
-              <Bar dataKey="rank" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Line type="monotone" dataKey="rank" stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 4 }} />
+            </LineChart>
           </ResponsiveContainer>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">

@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 from market.models import MarketCapRanking, PriceHistory, BenchmarkIndex
+from market.market_cap import get_implied_shares
 from .metrics import compute_all_metrics
 
 
@@ -307,3 +308,188 @@ def buy_hold_faang(start_year: int = 2016, end_year: int = 2025) -> dict:
     cumulative = (1 + portfolio_returns).cumprod()
 
     return _build_strategy_result('Buy & Hold FAANG+', cumulative, start_year, end_year)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for dynamic-rebalance strategies
+# ---------------------------------------------------------------------------
+
+def _compute_market_caps_at_date(prices_df, shares_map, target_date):
+    """Estimate market cap for every company at *target_date*."""
+    available_dates = prices_df.index[prices_df.index <= target_date]
+    if len(available_dates) == 0:
+        return {}
+
+    ref_date = available_dates[-1]
+    prices = prices_df.loc[ref_date]
+
+    result = {}
+    target_year = target_date.year
+
+    for ticker in prices_df.columns:
+        price = prices.get(ticker)
+        if pd.isna(price) or price <= 0:
+            continue
+
+        ticker_shares = shares_map.get(ticker, {})
+        if not ticker_shares:
+            continue
+
+        avail_years = sorted(ticker_shares.keys())
+        chosen = None
+        for y in reversed(avail_years):
+            if y <= target_year:
+                chosen = y
+                break
+        if chosen is None:
+            chosen = avail_years[0] if avail_years else None
+        if chosen is None:
+            continue
+
+        result[ticker] = ticker_shares[chosen] * float(price)
+
+    return result
+
+
+def _rebalance_dates(freq: str, start_year: int, end_year: int) -> list[date]:
+    """Generate rebalance dates for 'quarterly' or 'monthly'."""
+    dates: list[date] = []
+    if freq == 'quarterly':
+        for y in range(start_year, end_year + 1):
+            for m in (1, 4, 7, 10):
+                dates.append(date(y, m, 1))
+    else:  # monthly
+        for y in range(start_year, end_year + 1):
+            for m in range(1, 13):
+                dates.append(date(y, m, 1))
+    return dates
+
+
+def _top_n_rebalanced_strategy(
+    n: int,
+    freq: str,
+    start_year: int,
+    end_year: int,
+) -> dict:
+    """
+    Top-N market cap strategy with quarterly or monthly rebalancing.
+
+    At each rebalance date, estimates market cap for all historically-ranked
+    companies, picks the top N, and equal-weights them until the next
+    rebalance.
+    """
+    all_tickers = list(
+        MarketCapRanking.objects.values_list('company__ticker', flat=True).distinct()
+    )
+    prices_df = _get_annual_prices(all_tickers, start_year, end_year)
+    if prices_df.empty:
+        label = f'Top {n} {"Quarterly" if freq == "quarterly" else "Monthly"}'
+        return _build_strategy_result(label, pd.Series(dtype=float), start_year, end_year)
+
+    shares_map = get_implied_shares()
+    rb_dates = _rebalance_dates(freq, start_year, end_year)
+
+    portfolio_value = 1.0
+    daily_values: list[float] = []
+    daily_dates: list[date] = []
+
+    for i, rb_start in enumerate(rb_dates):
+        rb_end = (
+            rb_dates[i + 1] - timedelta(days=1)
+            if i + 1 < len(rb_dates)
+            else date(end_year, 12, 31)
+        )
+
+        mcaps = _compute_market_caps_at_date(prices_df, shares_map, rb_start)
+        if not mcaps:
+            continue
+
+        top_n_tickers = [
+            t for t, _ in sorted(mcaps.items(), key=lambda x: -x[1])[:n]
+        ]
+
+        mask = (prices_df.index >= rb_start) & (prices_df.index <= rb_end)
+        period_prices = prices_df.loc[mask]
+
+        available = [t for t in top_n_tickers if t in period_prices.columns]
+        if not available:
+            continue
+
+        period_slice = period_prices[available].dropna(how='all')
+        if period_slice.empty:
+            continue
+
+        weight = 1.0 / len(available)
+        daily_returns = period_slice.pct_change().fillna(0)
+
+        for dt, row in daily_returns.iterrows():
+            day_return = sum(row.get(t, 0) * weight for t in available)
+            portfolio_value *= (1 + day_return)
+            daily_values.append(portfolio_value)
+            daily_dates.append(dt)
+
+    label = f'Top {n} {"Quarterly" if freq == "quarterly" else "Monthly"}'
+    values = pd.Series(daily_values, index=daily_dates) if daily_values else pd.Series(dtype=float)
+    return _build_strategy_result(label, values, start_year, end_year)
+
+
+# ---------------------------------------------------------------------------
+# Quarterly-rebalanced strategies
+# ---------------------------------------------------------------------------
+
+@register_strategy(
+    'top5_quarterly',
+    'Top 5 Quarterly',
+    'Top 5 by market cap, equal weight, rebalanced every quarter',
+)
+def top5_quarterly(start_year: int = 2016, end_year: int = 2025) -> dict:
+    return _top_n_rebalanced_strategy(5, 'quarterly', start_year, end_year)
+
+
+@register_strategy(
+    'top10_quarterly',
+    'Top 10 Quarterly',
+    'Top 10 by market cap, equal weight, rebalanced every quarter',
+)
+def top10_quarterly(start_year: int = 2016, end_year: int = 2025) -> dict:
+    return _top_n_rebalanced_strategy(10, 'quarterly', start_year, end_year)
+
+
+@register_strategy(
+    'top20_quarterly',
+    'Top 20 Quarterly',
+    'Top 20 by market cap, equal weight, rebalanced every quarter',
+)
+def top20_quarterly(start_year: int = 2016, end_year: int = 2025) -> dict:
+    return _top_n_rebalanced_strategy(20, 'quarterly', start_year, end_year)
+
+
+# ---------------------------------------------------------------------------
+# Continuously (monthly) rebalanced strategies
+# ---------------------------------------------------------------------------
+
+@register_strategy(
+    'top5_monthly',
+    'Top 5 Continuous',
+    'Top 5 by market cap, equal weight, rebalanced monthly',
+)
+def top5_monthly(start_year: int = 2016, end_year: int = 2025) -> dict:
+    return _top_n_rebalanced_strategy(5, 'monthly', start_year, end_year)
+
+
+@register_strategy(
+    'top10_monthly',
+    'Top 10 Continuous',
+    'Top 10 by market cap, equal weight, rebalanced monthly',
+)
+def top10_monthly(start_year: int = 2016, end_year: int = 2025) -> dict:
+    return _top_n_rebalanced_strategy(10, 'monthly', start_year, end_year)
+
+
+@register_strategy(
+    'top20_monthly',
+    'Top 20 Continuous',
+    'Top 20 by market cap, equal weight, rebalanced monthly',
+)
+def top20_monthly(start_year: int = 2016, end_year: int = 2025) -> dict:
+    return _top_n_rebalanced_strategy(20, 'monthly', start_year, end_year)
