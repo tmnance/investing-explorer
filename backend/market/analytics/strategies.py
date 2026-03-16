@@ -66,8 +66,15 @@ def _build_strategy_result(
     portfolio_values: pd.Series,
     start_year: int,
     end_year: int,
+    rebalances_per_year: float = 1.0,
 ) -> dict:
     """Build a standardized strategy result dict."""
+    empty_metrics = {
+        'total_return': 0, 'cagr': 0, 'volatility': 0,
+        'sharpe_ratio': 0, 'sortino_ratio': 0, 'max_drawdown': 0,
+        'calmar_ratio': 0, 'after_tax_cagr': 0, 'tax_drag': 0, 'turnover': 0,
+        'best_year': 0, 'worst_year': 0, 'win_rate': 0,
+    }
     values = portfolio_values.dropna()
     if values.empty:
         return {
@@ -75,10 +82,7 @@ def _build_strategy_result(
             'dates': [],
             'cumulative_returns': [],
             'annual_returns': {},
-            'metrics': {
-                'total_return': 0, 'cagr': 0, 'volatility': 0,
-                'sharpe_ratio': 0, 'sortino_ratio': 0, 'max_drawdown': 0,
-            },
+            'metrics': empty_metrics,
         }
 
     base = values.iloc[0]
@@ -92,7 +96,17 @@ def _build_strategy_result(
             annual_returns[str(year)] = float((year_vals.iloc[-1] / year_vals.iloc[0]) - 1)
 
     prices_array = values.values.astype(float)
-    metrics = compute_all_metrics(prices_array)
+    metrics = compute_all_metrics(prices_array, rebalances_per_year=rebalances_per_year)
+
+    ar_values = list(annual_returns.values())
+    if ar_values:
+        metrics['best_year'] = max(ar_values)
+        metrics['worst_year'] = min(ar_values)
+        metrics['win_rate'] = sum(1 for r in ar_values if r > 0) / len(ar_values)
+    else:
+        metrics['best_year'] = 0
+        metrics['worst_year'] = 0
+        metrics['win_rate'] = 0
 
     return {
         'name': name,
@@ -116,13 +130,13 @@ def _benchmark_strategy(symbol: str, name: str, start_year: int, end_year: int) 
     )
 
     if not records:
-        return _build_strategy_result(f'{name} Benchmark', pd.Series(dtype=float), start_year, end_year)
+        return _build_strategy_result(f'{name} Benchmark', pd.Series(dtype=float), start_year, end_year, rebalances_per_year=0)
 
     values = pd.Series(
         [r['close'] for r in records],
         index=[r['date'] for r in records],
     )
-    return _build_strategy_result(f'{name} Benchmark', values, start_year, end_year)
+    return _build_strategy_result(f'{name} Benchmark', values, start_year, end_year, rebalances_per_year=0)
 
 
 @register_strategy('sp500_benchmark', 'S&P 500 Benchmark', 'Buy and hold the S&P 500 index')
@@ -223,7 +237,7 @@ def _top_n_strategy(n: int, start_year: int, end_year: int) -> dict:
 
     values = pd.Series(daily_values, index=daily_dates)
     name = f'Top {n} Market Cap' if n != 20 else 'Top 20 Equal Weight'
-    return _build_strategy_result(name, values, start_year, end_year)
+    return _build_strategy_result(name, values, start_year, end_year, rebalances_per_year=1)
 
 
 @register_strategy(
@@ -286,7 +300,7 @@ def momentum_strategy(start_year: int = 2016, end_year: int = 2025) -> dict:
             daily_dates.append(dt)
 
     values = pd.Series(daily_values, index=daily_dates) if daily_values else pd.Series(dtype=float)
-    return _build_strategy_result('Momentum (Rank Gainers)', values, start_year, end_year)
+    return _build_strategy_result('Momentum (Rank Gainers)', values, start_year, end_year, rebalances_per_year=1)
 
 
 @register_strategy(
@@ -298,18 +312,18 @@ def buy_hold_faang(start_year: int = 2016, end_year: int = 2025) -> dict:
     tickers = ['META', 'AAPL', 'AMZN', 'NVDA', 'GOOGL']
     prices_df = _get_annual_prices(tickers, start_year, end_year)
     if prices_df.empty:
-        return _build_strategy_result('Buy & Hold FAANG+', pd.Series(dtype=float), start_year, end_year)
+        return _build_strategy_result('Buy & Hold FAANG+', pd.Series(dtype=float), start_year, end_year, rebalances_per_year=0)
 
     available = [t for t in tickers if t in prices_df.columns]
     if not available:
-        return _build_strategy_result('Buy & Hold FAANG+', pd.Series(dtype=float), start_year, end_year)
+        return _build_strategy_result('Buy & Hold FAANG+', pd.Series(dtype=float), start_year, end_year, rebalances_per_year=0)
 
     weight = 1.0 / len(available)
     daily_returns = prices_df[available].pct_change().fillna(0)
     portfolio_returns = daily_returns.sum(axis=1) * weight
     cumulative = (1 + portfolio_returns).cumprod()
 
-    return _build_strategy_result('Buy & Hold FAANG+', cumulative, start_year, end_year)
+    return _build_strategy_result('Buy & Hold FAANG+', cumulative, start_year, end_year, rebalances_per_year=0)
 
 
 # ---------------------------------------------------------------------------
@@ -431,8 +445,9 @@ def _top_n_rebalanced_strategy(
             daily_dates.append(dt)
 
     label = f'Top {n} {"Quarterly" if freq == "quarterly" else "Monthly"}'
+    rb_per_year = 4.0 if freq == 'quarterly' else 12.0
     values = pd.Series(daily_values, index=daily_dates) if daily_values else pd.Series(dtype=float)
-    return _build_strategy_result(label, values, start_year, end_year)
+    return _build_strategy_result(label, values, start_year, end_year, rebalances_per_year=rb_per_year)
 
 
 # ---------------------------------------------------------------------------

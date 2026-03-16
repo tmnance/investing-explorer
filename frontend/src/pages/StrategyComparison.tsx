@@ -288,6 +288,9 @@ export default function StrategyComparison() {
                       <TermTooltip term="Sortino Ratio">Sortino</TermTooltip>
                     </th>
                     <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Calmar Ratio">Calmar</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
                       <TermTooltip term="Max DD">Max DD</TermTooltip>
                     </th>
                   </tr>
@@ -301,12 +304,75 @@ export default function StrategyComparison() {
                       <td className="py-3 px-4 text-right text-text-secondary">{formatPercent(s.metrics.volatility)}</td>
                       <td className="py-3 px-4 text-right text-text-primary">{s.metrics.sharpe_ratio.toFixed(2)}</td>
                       <td className="py-3 px-4 text-right text-text-primary">{s.metrics.sortino_ratio.toFixed(2)}</td>
+                      <td className="py-3 px-4 text-right text-text-primary">{s.metrics.calmar_ratio.toFixed(2)}</td>
                       <td className="py-3 px-4 text-right text-red">{formatPercent(s.metrics.max_drawdown)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <TermTooltip term="Tax Impact">Tax Impact</TermTooltip> & Additional Insights
+              </CardTitle>
+            </CardHeader>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 text-text-muted font-medium">Strategy</th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="CAGR">CAGR</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="After-Tax CAGR">After-Tax CAGR</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Tax Drag">Tax Drag</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Turnover">Turnover</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Win Rate">Win Rate</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Best Year">Best Year</TermTooltip>
+                    </th>
+                    <th className="text-right py-3 px-4 text-text-muted font-medium">
+                      <TermTooltip term="Worst Year">Worst Year</TermTooltip>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orderedResults.map((s) => (
+                    <tr key={s.name} className="border-b border-border-subtle">
+                      <td className="py-3 px-4 text-text-primary font-medium">{s.name}</td>
+                      <td className="py-3 px-4 text-right text-text-primary">{formatPercent(s.metrics.cagr)}</td>
+                      <td className="py-3 px-4 text-right text-text-primary">{formatPercent(s.metrics.after_tax_cagr)}</td>
+                      <td className="py-3 px-4 text-right text-text-secondary">
+                        {s.metrics.tax_drag > 0 ? `-${(s.metrics.tax_drag * 100).toFixed(2)}%` : '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right text-text-secondary">
+                        {s.metrics.turnover > 0 ? `${(s.metrics.turnover * 100).toFixed(0)}%` : 'None'}
+                      </td>
+                      <td className="py-3 px-4 text-right text-text-primary">
+                        {(s.metrics.win_rate * 100).toFixed(0)}%
+                      </td>
+                      <td className="py-3 px-4 text-right text-green">{formatPercent(s.metrics.best_year)}</td>
+                      <td className="py-3 px-4 text-right text-red">{formatPercent(s.metrics.worst_year)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-text-muted px-4 pb-3 pt-1">
+              Tax estimates assume U.S. federal rates: 37% short-term (≤1 yr) and 20% long-term capital gains. State taxes not included.
+              Turnover reflects the fraction of the portfolio replaced per year through rebalancing.
+            </p>
           </Card>
         </>
       )}

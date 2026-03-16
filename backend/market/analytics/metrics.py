@@ -1,5 +1,4 @@
 import numpy as np
-from typing import Optional
 
 
 def compute_returns(prices: np.ndarray) -> np.ndarray:
@@ -73,13 +72,52 @@ def max_drawdown(prices: np.ndarray) -> float:
     return float(np.min(drawdowns))
 
 
-def compute_all_metrics(prices: np.ndarray) -> dict:
+def calmar_ratio(prices: np.ndarray, trading_days_per_year: float = 252) -> float:
+    """CAGR / |max drawdown|. Higher is better."""
+    mdd = max_drawdown(prices)
+    if mdd == 0:
+        return 0.0
+    return float(cagr(prices, trading_days_per_year) / abs(mdd))
+
+
+def tax_adjusted_cagr(
+    ann_return: float,
+    st_rate: float = 0.37,
+    lt_rate: float = 0.20,
+    turnover: float = 1.0,
+) -> float:
+    """
+    Estimate after-tax CAGR using a blended tax rate.
+    `turnover` is the fraction of the portfolio sold per year (1.0 = annual).
+    Gains from the sold portion are taxed at st_rate, the rest deferred
+    and eventually taxed at lt_rate.
+    """
+    if ann_return <= 0:
+        return ann_return
+    blended_rate = turnover * st_rate + (1 - turnover) * lt_rate
+    return ann_return * (1 - blended_rate)
+
+
+def compute_all_metrics(
+    prices: np.ndarray,
+    rebalances_per_year: float = 1.0,
+) -> dict:
     """Compute all risk/return metrics for a price series."""
+    ann_ret = cagr(prices)
+    turnover = min(rebalances_per_year, 12.0) / 12.0
+
+    after_tax = tax_adjusted_cagr(ann_ret, turnover=turnover)
+    tax_drag = ann_ret - after_tax if ann_ret > 0 else 0.0
+
     return {
         'total_return': total_return(prices),
-        'cagr': cagr(prices),
+        'cagr': ann_ret,
         'volatility': annualized_volatility(prices),
         'sharpe_ratio': sharpe_ratio(prices),
         'sortino_ratio': sortino_ratio(prices),
         'max_drawdown': max_drawdown(prices),
+        'calmar_ratio': calmar_ratio(prices),
+        'after_tax_cagr': after_tax,
+        'tax_drag': tax_drag,
+        'turnover': turnover,
     }

@@ -68,6 +68,13 @@ export interface StrategyResult {
     max_drawdown: number
     sortino_ratio: number
     total_return: number
+    calmar_ratio: number
+    after_tax_cagr: number
+    tax_drag: number
+    turnover: number
+    best_year: number
+    worst_year: number
+    win_rate: number
   }
 }
 
