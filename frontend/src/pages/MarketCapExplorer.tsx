@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatMarketCap, CHART_COLORS } from '@/lib/utils'
 import { Link } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import {
   LineChart,
   Line,
@@ -16,6 +17,7 @@ import {
 } from 'recharts'
 
 export default function MarketCapExplorer() {
+  usePageTitle('Market Cap Explorer')
   const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart')
 

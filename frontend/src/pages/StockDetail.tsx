@@ -16,6 +16,7 @@ import {
   CartesianGrid,
 } from 'recharts'
 import { useState, useMemo } from 'react'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 const RANGES = ['1Y', '3Y', '5Y', 'All'] as const
 
@@ -46,6 +47,15 @@ export default function StockDetail() {
     queryFn: () => api.getCompany(ticker!),
     enabled: !!ticker,
   })
+
+  const companyName = company.data?.name
+  const title =
+    companyName && ticker
+      ? `${companyName} (${ticker})`
+      : ticker
+      ? `Stock: ${ticker}`
+      : 'Stock Detail'
+  usePageTitle(title)
 
   const prices = useQuery({
     queryKey: ['prices', ticker],

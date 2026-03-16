@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatPercent, CHART_COLORS } from '@/lib/utils'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { Plus, Trash2, Play } from 'lucide-react'
 import {
   LineChart,
@@ -56,6 +57,7 @@ interface SimulationResult {
 }
 
 export default function PortfolioSimulator() {
+  usePageTitle('Portfolio Simulator')
   const [allocations, setAllocations] = useState<Allocation[]>([
     { ticker: 'AAPL', weight: 25 },
     { ticker: 'MSFT', weight: 25 },

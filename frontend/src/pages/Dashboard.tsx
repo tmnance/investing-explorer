@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatMarketCap } from '@/lib/utils'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import {
   Treemap,
   ResponsiveContainer,
@@ -38,6 +39,7 @@ function TreemapContent(props: any) {
 const CURRENT_YEAR = String(new Date().getFullYear())
 
 export default function Dashboard() {
+  usePageTitle('Dashboard')
   const rankings = useQuery({
     queryKey: ['rankings', { year: CURRENT_YEAR }],
     queryFn: () => api.getMarketCapRankings({ year: CURRENT_YEAR }),

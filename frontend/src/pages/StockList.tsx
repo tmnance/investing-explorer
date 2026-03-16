@@ -4,8 +4,10 @@ import { api } from '@/api/client'
 import { Card } from '@/components/ui/Card'
 import { Link } from 'react-router-dom'
 import { Search } from 'lucide-react'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 export default function StockList() {
+  usePageTitle('Stocks')
   const [search, setSearch] = useState('')
 
   const companies = useQuery({

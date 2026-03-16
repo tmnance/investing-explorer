@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { api } from '@/api/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { CHART_COLORS } from '@/lib/utils'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import {
   LineChart,
   Line,
@@ -17,6 +18,7 @@ import {
 const BENCHMARK_STRATEGIES = ['sp500_benchmark', 'dow_benchmark', 'nasdaq_benchmark'] as const
 
 export default function BenchmarkComparison() {
+  usePageTitle('Benchmark Comparison')
   const comparison = useQuery({
     queryKey: ['benchmarkComparison', BENCHMARK_STRATEGIES],
     queryFn: () => api.getStrategyComparison(BENCHMARK_STRATEGIES, 2016, 2025),

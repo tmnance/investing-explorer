@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatPercent, CHART_COLORS } from '@/lib/utils'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import {
   LineChart,
   Line,
@@ -45,6 +46,7 @@ const STRATEGY_GROUPS: { title: string; ids: string[] }[] = [
 const ORDERED_IDS = STRATEGY_GROUPS.flatMap((g) => g.ids)
 
 export default function StrategyComparison() {
+  usePageTitle('Strategy Comparison')
   const [selectedStrategies, setSelectedStrategies] = useState<Set<string>>(new Set())
   const [startYear, setStartYear] = useState(2016)
   const [endYear, setEndYear] = useState(2025)
