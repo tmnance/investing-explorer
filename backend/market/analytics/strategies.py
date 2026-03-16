@@ -34,7 +34,9 @@ def run_strategy(strategy_id: str, start_year: int = 2016, end_year: int = 2025)
     """Run a strategy and return results."""
     if strategy_id not in STRATEGY_REGISTRY:
         raise ValueError(f'Unknown strategy: {strategy_id}')
-    return STRATEGY_REGISTRY[strategy_id]['fn'](start_year, end_year)
+    result = STRATEGY_REGISTRY[strategy_id]['fn'](start_year, end_year)
+    result['name'] = STRATEGY_REGISTRY[strategy_id]['name']
+    return result
 
 
 def _get_annual_prices(tickers: list[str], start_year: int, end_year: int) -> pd.DataFrame:
@@ -140,7 +142,7 @@ def nasdaq_benchmark(start_year: int = 2016, end_year: int = 2025) -> dict:
 
 @register_strategy(
     'top5_market_cap',
-    'Top 5 Market Cap',
+    'Top 5 Market Cap Annually',
     'Buy the top 5 companies by market cap each year, equal weight, rebalance annually',
 )
 def top5_market_cap(start_year: int = 2016, end_year: int = 2025) -> dict:
@@ -149,7 +151,7 @@ def top5_market_cap(start_year: int = 2016, end_year: int = 2025) -> dict:
 
 @register_strategy(
     'top10_market_cap',
-    'Top 10 Market Cap',
+    'Top 10 Market Cap Annually',
     'Buy the top 10 companies by market cap each year, equal weight, rebalance annually',
 )
 def top10_market_cap(start_year: int = 2016, end_year: int = 2025) -> dict:
@@ -158,7 +160,7 @@ def top10_market_cap(start_year: int = 2016, end_year: int = 2025) -> dict:
 
 @register_strategy(
     'top20_market_cap',
-    'Top 20 Market Cap',
+    'Top 20 Market Cap Annually',
     'Buy the top 20 companies by market cap each year, equal weight, rebalance annually',
 )
 def top20_market_cap(start_year: int = 2016, end_year: int = 2025) -> dict:
@@ -227,7 +229,7 @@ def _top_n_strategy(n: int, start_year: int, end_year: int) -> dict:
 @register_strategy(
     'momentum',
     'Momentum (Rank Gainers)',
-    'Buy companies that moved up the most in rank year-over-year, rebalance annually',
+    'Equal-weight the 5 companies that gained the most market-cap rank vs the prior year, rebalance annually',
 )
 def momentum_strategy(start_year: int = 2016, end_year: int = 2025) -> dict:
     portfolio_value = 1.0
