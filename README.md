@@ -39,29 +39,15 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173
+Open `http://localhost:5173`.
 
 ## Features
 
-- **Dashboard** -- Market overview with treemap, benchmark cards, and top movers
-- **Market Cap Explorer** -- Bump chart showing rank trajectory of top 20 companies (2016-2025)
-- **Stock Detail** -- Price charts, performance metrics, benchmark overlay, rank history
-- **Strategy Comparison** -- Compare strategies (Top N, Equal Weight, Momentum, FAANG+) with risk/return metrics
-- **Benchmark Comparison** -- Normalized index overlay, correlation matrix
-- **Portfolio Simulator** -- Custom stock/weight allocation backtested against S&P 500
-
-## API Endpoints
-
-| Endpoint | Description |
-|---|---|
-| `GET /api/companies/` | List all companies |
-| `GET /api/companies/:ticker/` | Company detail |
-| `GET /api/rankings/?year=2025` | Market cap rankings (filterable by year/ticker) |
-| `GET /api/rankings/years/` | Available years |
-| `GET /api/rankings/top_movers/` | Biggest rank changes YoY |
-| `GET /api/prices/:ticker/` | Price history for a stock |
-| `GET /api/benchmarks/` | Normalized benchmark index data |
-| `GET /api/benchmarks/latest/` | Latest close for each index |
-| `GET /api/strategies/` | Available strategies |
-| `GET /api/strategies/compare/?strategies=id1,id2` | Run and compare strategies |
-| `GET /api/simulator/?allocations=[...]&start_year=2016&end_year=2025` | Custom portfolio backtest |
+- **Dashboard**: Market overview with a Top-20-by-market-cap treemap (current year) plus quick benchmark snapshots.
+- **Market Cap Explorer**: Rank trajectory bump chart + table view, including the **current year** (derived from daily price history).
+- **Stocks**: Browse/search companies.
+- **Stock Detail**: Price history chart with benchmark overlays (S&P 500, Dow, Nasdaq), plus market-cap rank history.
+- **Strategy Comparison**: Compare strategies with selectable time window, grouped selection UI, ordered charts/legends, and a richer metrics table including **tax impact** estimates.
+- **Momentum Strategy Explorer** (`/strategies/momentum`): Deep-dive page with parameter controls (Top N, start/end), annual rebalance buy/sell events, and a full start/end permutation CAGR matrix.
+- **Benchmark Comparison**: Normalized benchmark performance comparison.
+- **Portfolio Simulator**: Backtest custom allocations against selected benchmarks.
