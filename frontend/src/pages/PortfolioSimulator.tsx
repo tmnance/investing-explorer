@@ -6,6 +6,8 @@ import { MetricCard } from '@/components/ui/MetricCard'
 import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatPercent, CHART_COLORS } from '@/lib/utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useSmartTimeAxis } from '@/hooks/useSmartTimeAxis'
+import { OrderedLegend } from '@/components/charts/OrderedLegend'
 import { Plus, Trash2, Play } from 'lucide-react'
 import {
   LineChart,
@@ -15,7 +17,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  Legend,
 } from 'recharts'
 
 interface Allocation {
@@ -67,6 +68,7 @@ export default function PortfolioSimulator() {
   const [startYear, setStartYear] = useState(2016)
   const [endYear, setEndYear] = useState(2025)
   const [selectedBenchmarks, setSelectedBenchmarks] = useState<Set<string>>(new Set(['^GSPC']))
+  const [hoveredSeries, setHoveredSeries] = useState<string | null>(null)
 
   const toggleBenchmark = (symbol: string) => {
     setSelectedBenchmarks((prev) => {
@@ -156,6 +158,7 @@ export default function PortfolioSimulator() {
       return point
     })
   }, [result])
+  const { ticks: xTicks, tickFormatter } = useSmartTimeAxis(chartData, { dateKey: 'date' })
 
   return (
     <div className="space-y-6">
@@ -321,7 +324,14 @@ export default function PortfolioSimulator() {
             <ResponsiveContainer width="100%" height={400}>
               <LineChart data={chartData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-                <XAxis dataKey="date" stroke="#55556a" tickFormatter={(d) => d.slice(0, 4)} minTickGap={60} />
+                <XAxis
+                  dataKey="date"
+                  stroke="#55556a"
+                  ticks={xTicks.length ? xTicks : undefined}
+                  tickFormatter={tickFormatter}
+                  minTickGap={30}
+                  interval="preserveStartEnd"
+                />
                 <YAxis stroke="#55556a" tickFormatter={(v) => `${v.toFixed(0)}%`} />
                 <Tooltip
                   contentStyle={{
@@ -332,13 +342,49 @@ export default function PortfolioSimulator() {
                   labelStyle={{ color: '#e4e4ef' }}
                   formatter={(v) => [typeof v === 'number' ? `${v.toFixed(2)}%` : String(v)]}
                 />
-                <Legend />
-                <Line type="monotone" dataKey="Portfolio" stroke={CHART_COLORS[0]} strokeWidth={2} dot={false} />
-                {result.benchmarks.map((b, i) => (
-                  <Line key={b.name} type="monotone" dataKey={b.name} stroke={CHART_COLORS[(i + 1) % CHART_COLORS.length]} strokeWidth={2} dot={false} strokeDasharray="5 5" />
-                ))}
+                {['Portfolio', ...result.benchmarks.map((b) => b.name)]
+                  .slice()
+                  .sort((a, b) => {
+                    if (!hoveredSeries) return 0
+                    if (a === hoveredSeries) return 1
+                    if (b === hoveredSeries) return -1
+                    return 0
+                  })
+                  .map((name) => {
+                    const isPortfolio = name === 'Portfolio'
+                    const idx = isPortfolio ? 0 : result.benchmarks.findIndex((b) => b.name === name) + 1
+                    const color = CHART_COLORS[idx % CHART_COLORS.length]
+                    const active = !hoveredSeries || hoveredSeries === name
+                    return (
+                      <Line
+                        key={name}
+                        type="monotone"
+                        dataKey={name}
+                        stroke={color}
+                        strokeWidth={hoveredSeries === name ? 3 : 2}
+                        opacity={active ? 1 : 0.18}
+                        dot={false}
+                        strokeDasharray={isPortfolio ? undefined : '5 5'}
+                        isAnimationActive={false}
+                      />
+                    )
+                  })}
               </LineChart>
             </ResponsiveContainer>
+            <div onMouseLeave={() => setHoveredSeries(null)}>
+              <OrderedLegend
+                items={[
+                  { name: 'Portfolio', color: CHART_COLORS[0], type: 'line' as const },
+                  ...result.benchmarks.map((b, i) => ({
+                    name: b.name,
+                    color: CHART_COLORS[(i + 1) % CHART_COLORS.length],
+                    type: 'line' as const,
+                  })),
+                ]}
+                activeName={hoveredSeries}
+                onHover={setHoveredSeries}
+              />
+            </div>
           </Card>
 
           <Card>

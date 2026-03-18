@@ -6,6 +6,8 @@ import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatPercent, CHART_COLORS } from '@/lib/utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { Link } from 'react-router-dom'
+import { useSmartTimeAxis } from '@/hooks/useSmartTimeAxis'
+import { OrderedLegend } from '@/components/charts/OrderedLegend'
 import {
   LineChart,
   Line,
@@ -17,23 +19,6 @@ import {
   BarChart,
   Bar,
 } from 'recharts'
-
-function OrderedLegend({ items }: { items: { name: string; color: string; type: 'line' | 'rect' }[] }) {
-  return (
-    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-text-secondary mt-2">
-      {items.map((item) => (
-        <span key={item.name} className="flex items-center gap-1.5">
-          {item.type === 'line' ? (
-            <svg width="14" height="3"><line x1="0" y1="1.5" x2="14" y2="1.5" stroke={item.color} strokeWidth={2} /></svg>
-          ) : (
-            <svg width="10" height="10"><rect width="10" height="10" rx="2" fill={item.color} /></svg>
-          )}
-          {item.name}
-        </span>
-      ))}
-    </div>
-  )
-}
 
 const STRATEGY_GROUPS: { title: string; ids: string[] }[] = [
   { title: 'Benchmarks',                         ids: ['sp500_benchmark', 'dow_benchmark', 'nasdaq_benchmark'] },
@@ -53,6 +38,8 @@ export default function StrategyComparison() {
   const [selectedStrategies, setSelectedStrategies] = useState<Set<string>>(new Set())
   const [startYear, setStartYear] = useState(FIRST_YEAR)
   const [endYear, setEndYear] = useState(LAST_YEAR)
+  const [hoveredSeries, setHoveredSeries] = useState<string | null>(null)
+  const [hoveredAnnualSeries, setHoveredAnnualSeries] = useState<string | null>(null)
 
   const available = useQuery({
     queryKey: ['availableStrategies'],
@@ -112,6 +99,8 @@ export default function StrategyComparison() {
       return point
     })
   }, [orderedResults])
+  const { ticks: cumulativeXAxisTicks, tickFormatter: cumulativeTickFormatter } =
+    useSmartTimeAxis(cumulativeData, { dateKey: 'date' })
 
   const annualReturnData = useMemo(() => {
     if (!orderedResults.length) return []
@@ -214,7 +203,14 @@ export default function StrategyComparison() {
             <ResponsiveContainer width="100%" height={400}>
               <LineChart data={cumulativeData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-                <XAxis dataKey="date" stroke="#55556a" tickFormatter={(d) => d.slice(0, 4)} minTickGap={60} />
+                <XAxis
+                  dataKey="date"
+                  stroke="#55556a"
+                  ticks={cumulativeXAxisTicks.length ? cumulativeXAxisTicks : undefined}
+                  tickFormatter={cumulativeTickFormatter}
+                  minTickGap={30}
+                  interval="preserveStartEnd"
+                />
                 <YAxis stroke="#55556a" tickFormatter={(v) => `${v.toFixed(0)}%`} />
                 <Tooltip
                   contentStyle={{
@@ -231,21 +227,42 @@ export default function StrategyComparison() {
                     return idx === -1 ? 999 : idx
                   }}
                 />
-                {orderedResults.map((s, i) => (
-                  <Line
-                    key={s.name}
-                    type="monotone"
-                    dataKey={s.name}
-                    stroke={CHART_COLORS[i % CHART_COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                ))}
+                {orderedResults
+                  .slice()
+                  .sort((a, b) => {
+                    if (!hoveredSeries) return 0
+                    if (a.name === hoveredSeries) return 1
+                    if (b.name === hoveredSeries) return -1
+                    return 0
+                  })
+                  .map((s) => {
+                    const idx = orderedResults.findIndex((x) => x.name === s.name)
+                    const color = CHART_COLORS[idx % CHART_COLORS.length]
+                    const active = !hoveredSeries || hoveredSeries === s.name
+                    return (
+                      <Line
+                        key={s.name}
+                        type="monotone"
+                        dataKey={s.name}
+                        stroke={color}
+                        strokeWidth={hoveredSeries === s.name ? 3 : 2}
+                        opacity={active ? 1 : 0.18}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    )
+                  })}
               </LineChart>
             </ResponsiveContainer>
-            <OrderedLegend items={orderedResults.map((s, i) => ({
-              name: s.name, color: CHART_COLORS[i % CHART_COLORS.length], type: 'line',
-            }))} />
+            <div onMouseLeave={() => setHoveredSeries(null)}>
+              <OrderedLegend
+                items={orderedResults.map((s, i) => ({
+                  name: s.name, color: CHART_COLORS[i % CHART_COLORS.length], type: 'line',
+                }))}
+                activeName={hoveredSeries}
+                onHover={setHoveredSeries}
+              />
+            </div>
           </Card>
 
           <Card>
@@ -276,14 +293,21 @@ export default function StrategyComparison() {
                     key={s.name}
                     dataKey={s.name}
                     fill={CHART_COLORS[i % CHART_COLORS.length]}
+                    opacity={!hoveredAnnualSeries || hoveredAnnualSeries === s.name ? 1 : 0.18}
                     radius={[4, 4, 0, 0]}
                   />
                 ))}
               </BarChart>
             </ResponsiveContainer>
-            <OrderedLegend items={orderedResults.map((s, i) => ({
-              name: s.name, color: CHART_COLORS[i % CHART_COLORS.length], type: 'rect',
-            }))} />
+            <div onMouseLeave={() => setHoveredAnnualSeries(null)}>
+              <OrderedLegend
+                items={orderedResults.map((s, i) => ({
+                  name: s.name, color: CHART_COLORS[i % CHART_COLORS.length], type: 'rect',
+                }))}
+                activeName={hoveredAnnualSeries}
+                onHover={setHoveredAnnualSeries}
+              />
+            </div>
           </Card>
 
           <Card>

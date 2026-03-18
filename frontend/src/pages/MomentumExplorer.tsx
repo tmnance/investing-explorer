@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { TermTooltip } from '@/components/ui/TermTooltip'
 import { formatPercent, CHART_COLORS } from '@/lib/utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useSmartTimeAxis } from '@/hooks/useSmartTimeAxis'
 import { Link } from 'react-router-dom'
 import {
   LineChart,
@@ -189,6 +190,7 @@ export default function MomentumExplorer() {
       value: (detail.data!.cumulative_returns[i] - 1) * 100,
     }))
   }, [detail.data])
+  const { ticks: xTicks, tickFormatter: tickFormatter } = useSmartTimeAxis(chartData, { dateKey: 'date' })
 
   const matrixYears = useMemo(() => {
     if (!matrix.data?.length) return []
@@ -299,7 +301,14 @@ export default function MomentumExplorer() {
             <ResponsiveContainer width="100%" height={350}>
               <LineChart data={chartData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-                <XAxis dataKey="date" stroke="#55556a" tickFormatter={(d) => d.slice(0, 4)} minTickGap={60} />
+                <XAxis
+                  dataKey="date"
+                  stroke="#55556a"
+                  ticks={xTicks.length ? xTicks : undefined}
+                  tickFormatter={tickFormatter}
+                  minTickGap={30}
+                  interval="preserveStartEnd"
+                />
                 <YAxis stroke="#55556a" tickFormatter={(v) => `${v.toFixed(0)}%`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1a1a25', border: '1px solid #2a2a3a', borderRadius: '8px' }}

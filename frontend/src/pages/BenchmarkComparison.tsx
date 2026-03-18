@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { api } from '@/api/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { CHART_COLORS } from '@/lib/utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useSmartTimeAxis } from '@/hooks/useSmartTimeAxis'
+import { OrderedLegend } from '@/components/charts/OrderedLegend'
 import {
   LineChart,
   Line,
@@ -12,13 +14,13 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  Legend,
 } from 'recharts'
 
 const BENCHMARK_STRATEGIES = ['sp500_benchmark', 'dow_benchmark', 'nasdaq_benchmark'] as const
 
 export default function BenchmarkComparison() {
   usePageTitle('Benchmark Comparison')
+  const [hoveredSeries, setHoveredSeries] = useState<string | null>(null)
   const comparison = useQuery({
     queryKey: ['benchmarkComparison', BENCHMARK_STRATEGIES],
     queryFn: () => api.getStrategyComparison(BENCHMARK_STRATEGIES, 2016, 2025),
@@ -86,6 +88,7 @@ export default function BenchmarkComparison() {
     () => (comparison.data ?? []).map((s) => s.name.replace(' Benchmark', '')),
     [comparison.data]
   )
+  const { ticks: xTicks, tickFormatter } = useSmartTimeAxis(normalizedData, { dateKey: 'date' })
 
   return (
     <div className="space-y-6">
@@ -99,33 +102,67 @@ export default function BenchmarkComparison() {
           <CardTitle>Normalized Performance (% Change from Start)</CardTitle>
         </CardHeader>
         {normalizedData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={450}>
-            <LineChart data={normalizedData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-              <XAxis dataKey="date" stroke="#55556a" tickFormatter={(d) => String(d).slice(0, 7)} minTickGap={80} />
-              <YAxis stroke="#55556a" tickFormatter={(v) => `${Number(v).toFixed(0)}%`} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#1a1a25',
-                  border: '1px solid #2a2a3a',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e4e4ef' }}
-                formatter={(v) => [typeof v === 'number' ? `${v.toFixed(2)}%` : String(v)]}
-              />
-              <Legend />
-              {labels.map((label, i) => (
-                <Line
-                  key={label}
-                  type="monotone"
-                  dataKey={label}
-                  stroke={CHART_COLORS[i % CHART_COLORS.length]}
-                  strokeWidth={2}
-                  dot={false}
+          <div>
+            <ResponsiveContainer width="100%" height={450}>
+              <LineChart data={normalizedData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
+                <XAxis
+                  dataKey="date"
+                  stroke="#55556a"
+                  ticks={xTicks.length ? xTicks : undefined}
+                  tickFormatter={tickFormatter}
+                  minTickGap={30}
+                  interval="preserveStartEnd"
                 />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+                <YAxis stroke="#55556a" tickFormatter={(v) => `${Number(v).toFixed(0)}%`} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#1a1a25',
+                    border: '1px solid #2a2a3a',
+                    borderRadius: '8px',
+                  }}
+                  labelStyle={{ color: '#e4e4ef' }}
+                  formatter={(v) => [typeof v === 'number' ? `${v.toFixed(2)}%` : String(v)]}
+                />
+                {labels
+                  .slice()
+                  .sort((a, b) => {
+                    if (!hoveredSeries) return 0
+                    if (a === hoveredSeries) return 1
+                    if (b === hoveredSeries) return -1
+                    return 0
+                  })
+                  .map((label, i) => {
+                    const idx = labels.findIndex((l) => l === label)
+                    const color = CHART_COLORS[idx % CHART_COLORS.length]
+                    const active = !hoveredSeries || hoveredSeries === label
+                    return (
+                      <Line
+                        key={label}
+                        type="monotone"
+                        dataKey={label}
+                        stroke={color}
+                        strokeWidth={hoveredSeries === label ? 3 : 2}
+                        opacity={active ? 1 : 0.18}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    )
+                  })}
+              </LineChart>
+            </ResponsiveContainer>
+            <div onMouseLeave={() => setHoveredSeries(null)}>
+              <OrderedLegend
+                items={labels.map((label, i) => ({
+                  name: label,
+                  color: CHART_COLORS[i % CHART_COLORS.length],
+                  type: 'line' as const,
+                }))}
+                activeName={hoveredSeries}
+                onHover={setHoveredSeries}
+              />
+            </div>
+          </div>
         ) : (
           <div className="h-[450px] flex items-center justify-center text-text-muted">
             {comparison.isLoading ? 'Loading benchmark data...' : 'No benchmark data available. Run the price/index gathering scripts.'}

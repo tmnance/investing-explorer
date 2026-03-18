@@ -17,6 +17,7 @@ import {
 } from 'recharts'
 import { useState, useMemo } from 'react'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useSmartTimeAxis } from '@/hooks/useSmartTimeAxis'
 
 const RANGES = ['1Y', '3Y', '5Y', 'All'] as const
 
@@ -135,6 +136,7 @@ export default function StockDetail() {
       return point
     })
   }, [filteredPrices, showBenchmarks, selectedBenchmarks, benchmarks.data])
+  const { ticks: xTicks, tickFormatter } = useSmartTimeAxis(priceChartData, { dateKey: 'date' })
 
   const metrics = useMemo(() => {
     if (!prices.data || prices.data.length < 2) return null
@@ -245,7 +247,14 @@ export default function StockDetail() {
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={priceChartData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-              <XAxis dataKey="date" stroke="#55556a" tickFormatter={(d) => d.slice(0, 7)} minTickGap={60} />
+              <XAxis
+                dataKey="date"
+                stroke="#55556a"
+                ticks={xTicks.length ? xTicks : undefined}
+                tickFormatter={tickFormatter}
+                minTickGap={30}
+                interval="preserveStartEnd"
+              />
               <YAxis
                 stroke="#55556a"
                 tickFormatter={showBenchmarks
