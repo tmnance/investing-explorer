@@ -58,6 +58,9 @@ def _get_annual_prices(tickers: list[str], start_year: int, end_year: int) -> pd
     df = pd.DataFrame(list(all_prices))
     df = df.pivot(index='date', columns='company__ticker', values='adj_close')
     df = df.sort_index()
+    # Pandas may coerce DateField values to Timestamp depending on version.
+    # Normalize to plain datetime.date so all strategies can safely compare with date().
+    df.index = pd.to_datetime(df.index).date
     return df
 
 
@@ -182,14 +185,20 @@ def top20_market_cap(start_year: int = 2016, end_year: int = 2025) -> dict:
 
 
 def _top_n_strategy(n: int, start_year: int, end_year: int) -> dict:
-    """Generic top-N market cap strategy with annual rebalancing and equal weight."""
+    """
+    Generic top-N market cap strategy with annual rebalancing and equal weight.
+
+    Uses year-(Y-1) rankings (year-end snapshot) to select stocks for trading
+    in year Y, avoiding lookahead bias.
+    """
     all_rankings = {}
-    for year in range(start_year, end_year + 1):
+    for year in range(start_year - 1, end_year + 1):
         rankings = list(
             MarketCapRanking.objects.filter(year=year, rank__lte=n)
             .values_list('company__ticker', flat=True)
         )
-        all_rankings[year] = rankings
+        if rankings:
+            all_rankings[year] = rankings
 
     all_tickers = set()
     for tickers in all_rankings.values():
@@ -197,22 +206,24 @@ def _top_n_strategy(n: int, start_year: int, end_year: int) -> dict:
 
     prices_df = _get_annual_prices(list(all_tickers), start_year, end_year)
     if prices_df.empty:
-        name = f'Top {n} Market Cap' if n != 20 else 'Top 20 Equal Weight'
+        name = f'Top {n} Market Cap Annually'
         return _build_strategy_result(name, pd.Series(dtype=float), start_year, end_year)
+
+    prices_df = prices_df.ffill()
 
     portfolio_value = 1.0
     daily_values = []
     daily_dates = []
 
     for year in range(start_year, end_year + 1):
-        tickers = all_rankings.get(year, [])
+        signal_year = year - 1
+        tickers = all_rankings.get(signal_year, [])
         if not tickers:
             continue
 
-        year_start = date(year, 1, 2)
+        year_start = date(year, 1, 1)
         year_end = date(year, 12, 31)
-        year_mask = (prices_df.index >= year_start) & (prices_df.index <= year_end)
-        year_prices = prices_df.loc[year_mask]
+        year_prices = prices_df.loc[year_start:year_end]
 
         available = [t for t in tickers if t in year_prices.columns]
         if not available:
@@ -222,21 +233,21 @@ def _top_n_strategy(n: int, start_year: int, end_year: int) -> dict:
         if year_slice.empty:
             continue
 
-        weight = 1.0 / len(available)
-        daily_returns = year_slice.pct_change().fillna(0)
+        per_stock_cum = year_slice / year_slice.iloc[0]
+        portfolio_cum = per_stock_cum.mean(axis=1)
 
-        for dt, row in daily_returns.iterrows():
-            day_return = sum(row.get(t, 0) * weight for t in available)
-            portfolio_value *= (1 + day_return)
-            daily_values.append(portfolio_value)
+        for dt, growth in portfolio_cum.items():
+            daily_values.append(portfolio_value * growth)
             daily_dates.append(dt)
 
+        portfolio_value = daily_values[-1]
+
     if not daily_values:
-        name = f'Top {n} Market Cap' if n != 20 else 'Top 20 Equal Weight'
+        name = f'Top {n} Market Cap Annually'
         return _build_strategy_result(name, pd.Series(dtype=float), start_year, end_year)
 
     values = pd.Series(daily_values, index=daily_dates)
-    name = f'Top {n} Market Cap' if n != 20 else 'Top 20 Equal Weight'
+    name = f'Top {n} Market Cap Annually'
     return _build_strategy_result(name, values, start_year, end_year, rebalances_per_year=1)
 
 
@@ -246,24 +257,32 @@ def _top_n_strategy(n: int, start_year: int, end_year: int) -> dict:
     'Equal-weight the 5 companies that gained the most market-cap rank vs the prior year, rebalance annually',
 )
 def momentum_strategy(start_year: int = 2016, end_year: int = 2025) -> dict:
+    """
+    For holding year Y, uses rank changes from year-end (Y-2) to year-end (Y-1)
+    as the signal. Only considers companies ranked in the top 20 in both snapshot
+    years. Buys the top 5 positive rank gainers equal-weight at the start of Y.
+    Holds with natural drift through the year.
+    """
     portfolio_value = 1.0
     daily_values = []
     daily_dates = []
 
-    for year in range(max(start_year, 2017), end_year + 1):
-        current = {
+    for year in range(start_year, end_year + 1):
+        signal_year = year - 1
+
+        current_ranks = {
             r['company__ticker']: r['rank']
-            for r in MarketCapRanking.objects.filter(year=year).values('company__ticker', 'rank')
+            for r in MarketCapRanking.objects.filter(year=signal_year).values('company__ticker', 'rank')
         }
-        previous = {
+        previous_ranks = {
             r['company__ticker']: r['rank']
-            for r in MarketCapRanking.objects.filter(year=year - 1).values('company__ticker', 'rank')
+            for r in MarketCapRanking.objects.filter(year=signal_year - 1).values('company__ticker', 'rank')
         }
 
         movers = []
-        for ticker, curr_rank in current.items():
-            if ticker in previous:
-                rank_change = previous[ticker] - curr_rank
+        for ticker, curr_rank in current_ranks.items():
+            if ticker in previous_ranks and curr_rank <= 20 and previous_ranks[ticker] <= 20:
+                rank_change = previous_ranks[ticker] - curr_rank
                 if rank_change > 0:
                     movers.append((ticker, rank_change))
 
@@ -277,27 +296,20 @@ def momentum_strategy(start_year: int = 2016, end_year: int = 2025) -> dict:
         if prices_df.empty:
             continue
 
-        year_start = date(year, 1, 2)
-        year_end = date(year, 12, 31)
-        year_mask = (prices_df.index >= year_start) & (prices_df.index <= year_end)
-        year_prices = prices_df.loc[year_mask]
+        prices_df = prices_df.ffill()
+        year_prices = prices_df.loc[date(year, 1, 1):date(year, 12, 31)].dropna(how='all')
 
-        available = [t for t in top_movers if t in year_prices.columns]
-        if not available:
+        if year_prices.empty:
             continue
 
-        year_slice = year_prices[available].dropna(how='all')
-        if year_slice.empty:
-            continue
+        per_stock_cum = year_prices / year_prices.iloc[0]
+        portfolio_cum = per_stock_cum.mean(axis=1)
 
-        weight = 1.0 / len(available)
-        daily_returns = year_slice.pct_change().fillna(0)
-
-        for dt, row in daily_returns.iterrows():
-            day_return = sum(row.get(t, 0) * weight for t in available)
-            portfolio_value *= (1 + day_return)
-            daily_values.append(portfolio_value)
+        for dt, growth in portfolio_cum.items():
+            daily_values.append(portfolio_value * growth)
             daily_dates.append(dt)
+
+        portfolio_value = daily_values[-1]
 
     values = pd.Series(daily_values, index=daily_dates) if daily_values else pd.Series(dtype=float)
     return _build_strategy_result('Momentum (Rank Gainers)', values, start_year, end_year, rebalances_per_year=1)
@@ -318,12 +330,11 @@ def buy_hold_faang(start_year: int = 2016, end_year: int = 2025) -> dict:
     if not available:
         return _build_strategy_result('Buy & Hold FAANG+', pd.Series(dtype=float), start_year, end_year, rebalances_per_year=0)
 
-    weight = 1.0 / len(available)
-    daily_returns = prices_df[available].pct_change().fillna(0)
-    portfolio_returns = daily_returns.sum(axis=1) * weight
-    cumulative = (1 + portfolio_returns).cumprod()
+    prices_df = prices_df[available].ffill()
+    per_stock_growth = prices_df / prices_df.iloc[0]
+    portfolio = per_stock_growth.mean(axis=1)
 
-    return _build_strategy_result('Buy & Hold FAANG+', cumulative, start_year, end_year, rebalances_per_year=0)
+    return _build_strategy_result('Buy & Hold FAANG+', portfolio, start_year, end_year, rebalances_per_year=0)
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +342,12 @@ def buy_hold_faang(start_year: int = 2016, end_year: int = 2025) -> dict:
 # ---------------------------------------------------------------------------
 
 def _compute_market_caps_at_date(prices_df, shares_map, target_date):
-    """Estimate market cap for every company at *target_date*."""
+    """
+    Estimate market cap for every company at *target_date*.
+
+    Uses implied shares from the most recent completed year (year < target_year)
+    to avoid lookahead bias — year-end share counts aren't known until the year ends.
+    """
     available_dates = prices_df.index[prices_df.index <= target_date]
     if len(available_dates) == 0:
         return {}
@@ -340,7 +356,7 @@ def _compute_market_caps_at_date(prices_df, shares_map, target_date):
     prices = prices_df.loc[ref_date]
 
     result = {}
-    target_year = target_date.year
+    cutoff_year = target_date.year - 1
 
     for ticker in prices_df.columns:
         price = prices.get(ticker)
@@ -354,11 +370,9 @@ def _compute_market_caps_at_date(prices_df, shares_map, target_date):
         avail_years = sorted(ticker_shares.keys())
         chosen = None
         for y in reversed(avail_years):
-            if y <= target_year:
+            if y <= cutoff_year:
                 chosen = y
                 break
-        if chosen is None:
-            chosen = avail_years[0] if avail_years else None
         if chosen is None:
             continue
 
@@ -391,17 +405,21 @@ def _top_n_rebalanced_strategy(
     Top-N market cap strategy with quarterly or monthly rebalancing.
 
     At each rebalance date, estimates market cap for all historically-ranked
-    companies, picks the top N, and equal-weights them until the next
-    rebalance.
+    companies (using prior-year implied shares to avoid lookahead), picks
+    the top N, and equal-weights them until the next rebalance.
+
+    Uses price-ratio approach within each period to avoid losing returns
+    at rebalance boundaries.
     """
     all_tickers = list(
         MarketCapRanking.objects.values_list('company__ticker', flat=True).distinct()
     )
-    prices_df = _get_annual_prices(all_tickers, start_year, end_year)
+    prices_df = _get_annual_prices(all_tickers, start_year - 1, end_year)
     if prices_df.empty:
         label = f'Top {n} {"Quarterly" if freq == "quarterly" else "Monthly"}'
         return _build_strategy_result(label, pd.Series(dtype=float), start_year, end_year)
 
+    prices_df = prices_df.ffill()
     shares_map = get_implied_shares()
     rb_dates = _rebalance_dates(freq, start_year, end_year)
 
@@ -424,8 +442,7 @@ def _top_n_rebalanced_strategy(
             t for t, _ in sorted(mcaps.items(), key=lambda x: -x[1])[:n]
         ]
 
-        mask = (prices_df.index >= rb_start) & (prices_df.index <= rb_end)
-        period_prices = prices_df.loc[mask]
+        period_prices = prices_df.loc[rb_start:rb_end]
 
         available = [t for t in top_n_tickers if t in period_prices.columns]
         if not available:
@@ -435,14 +452,14 @@ def _top_n_rebalanced_strategy(
         if period_slice.empty:
             continue
 
-        weight = 1.0 / len(available)
-        daily_returns = period_slice.pct_change().fillna(0)
+        per_stock_cum = period_slice / period_slice.iloc[0]
+        portfolio_cum = per_stock_cum.mean(axis=1)
 
-        for dt, row in daily_returns.iterrows():
-            day_return = sum(row.get(t, 0) * weight for t in available)
-            portfolio_value *= (1 + day_return)
-            daily_values.append(portfolio_value)
+        for dt, growth in portfolio_cum.items():
+            daily_values.append(portfolio_value * growth)
             daily_dates.append(dt)
+
+        portfolio_value = daily_values[-1]
 
     label = f'Top {n} {"Quarterly" if freq == "quarterly" else "Monthly"}'
     rb_per_year = 4.0 if freq == 'quarterly' else 12.0

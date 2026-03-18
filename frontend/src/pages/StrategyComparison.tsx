@@ -45,12 +45,14 @@ const STRATEGY_GROUPS: { title: string; ids: string[] }[] = [
 ]
 
 const ORDERED_IDS = STRATEGY_GROUPS.flatMap((g) => g.ids)
+const FIRST_YEAR = 2017
+const LAST_YEAR = (new Date()).getFullYear() // current calendar year
 
 export default function StrategyComparison() {
   usePageTitle('Strategy Comparison')
   const [selectedStrategies, setSelectedStrategies] = useState<Set<string>>(new Set())
-  const [startYear, setStartYear] = useState(2016)
-  const [endYear, setEndYear] = useState(2025)
+  const [startYear, setStartYear] = useState(FIRST_YEAR)
+  const [endYear, setEndYear] = useState(LAST_YEAR)
 
   const available = useQuery({
     queryKey: ['availableStrategies'],
@@ -88,11 +90,24 @@ export default function StrategyComparison() {
 
   const cumulativeData = useMemo(() => {
     if (!orderedResults.length) return []
-    const ref = orderedResults[0]
-    return ref.dates.map((date, i) => {
-      const point: Record<string, any> = { date }
-      for (const s of orderedResults) {
-        point[s.name] = (s.cumulative_returns[i] - 1) * 100
+
+    const lookups = orderedResults.map((s) => {
+      const map = new Map<string, number>()
+      s.dates.forEach((d, i) => map.set(d, (s.cumulative_returns[i] - 1) * 100))
+      return { name: s.name, map }
+    })
+
+    const allDates = new Set<string>()
+    orderedResults.forEach((s) => s.dates.forEach((d) => allDates.add(d)))
+    const sorted = Array.from(allDates).sort()
+
+    const last: Record<string, number | undefined> = {}
+    return sorted.map((d) => {
+      const point: Record<string, any> = { date: d }
+      for (const { name, map } of lookups) {
+        const val = map.get(d)
+        if (val !== undefined) last[name] = val
+        if (last[name] !== undefined) point[name] = last[name]
       }
       return point
     })
@@ -135,7 +150,7 @@ export default function StrategyComparison() {
               onChange={(e) => setStartYear(Number(e.target.value))}
               className="bg-surface-elevated border border-border rounded-lg px-2 py-1 text-xs text-text-primary"
             >
-              {Array.from({ length: 2025 - 2016 + 1 }, (_, i) => 2016 + i).map((y) => (
+              {Array.from({ length: LAST_YEAR - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i).map((y) => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
@@ -145,7 +160,7 @@ export default function StrategyComparison() {
               onChange={(e) => setEndYear(Number(e.target.value))}
               className="bg-surface-elevated border border-border rounded-lg px-2 py-1 text-xs text-text-primary"
             >
-              {Array.from({ length: 2025 - 2016 + 1 }, (_, i) => 2016 + i).map((y) => (
+              {Array.from({ length: LAST_YEAR - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i).map((y) => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
